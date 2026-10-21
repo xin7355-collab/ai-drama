@@ -75,4 +75,6 @@
   - 改版時 `app.js` 的 `APP_VER`、`sw.js` 的 `VER`、`version.json` 三處一起改（有測試擋）。
   - 改了 `SPEC` 或示範專案要跑 `npm run templates` 重產 `templates/`（有測試擋）。
   - 使用者或 AI 給的文字一律用 textContent，不用 innerHTML；CSP 不允許 inline script。
-  - 測試：`npm run selftest`、`npx playwright test`（CI 另跑 WebKit）。
+  - 測試：`npm run selftest`、`npx playwright test`（CI 另跑 WebKit，重試才過也算失敗）。
+  - 從 Claude 工作階段 push 不會自動觸發「測試」工作流，推完要手動觸發：
+    `gh api -X POST repos/xin7355-collab/ai-drama/actions/workflows/test.yml/dispatches -f ref=main`。
