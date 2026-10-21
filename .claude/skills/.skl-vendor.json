@@ -1,0 +1,41 @@
+{
+  "skills": [
+    "a11y-audit",
+    "app-guardrails-audit",
+    "apple-hig-expert",
+    "code-reviewer",
+    "focused-fix",
+    "pw",
+    "senior-prompt-engineer",
+    "ship-gate",
+    "video-content-strategist",
+    "zh-tw-humanizer"
+  ],
+  "source_repo": "https://github.com/xin7355-collab/skl",
+  "source_commit": "fc3fa73",
+  "updated_at": "2026-10-21T05:21:29Z",
+  "packs": [],
+  "extra_skills": [
+    "community/skills/zh-tw-humanizer",
+    "engineering-team/a11y-audit/skills/a11y-audit",
+    "engineering-team/playwright-pro/skills/pw",
+    "engineering-team/skills/code-reviewer",
+    "engineering-team/skills/senior-prompt-engineer",
+    "engineering/skills/focused-fix",
+    "engineering/skills/ship-gate",
+    "marketing-skill/video-content-strategist/skills/video-content-strategist",
+    "product-team/apple-hig-expert/skills/apple-hig-expert"
+  ],
+  "hashes": {
+    "a11y-audit": "e9ea8791512f85d94ca8c3d73a01af3464b62d8cf0634582ad8b0e66ad9a1062",
+    "app-guardrails-audit": "b1bef1b2680a1630c889d0579542c22e6451585ef4ef9cada876467428fa973b",
+    "apple-hig-expert": "274bf3e7af8e619c158d797a718bbeded01b4cb75902d6dcabc0e96373c9c72d",
+    "code-reviewer": "6d24ceee3a88e6fcaa850fae5ed942e2c555ea6fb74d5a286bc9718ced301f41",
+    "focused-fix": "baa15e0e5af817cb7f6160d76174de45c6f798f81e2b80844cbf3a9df32c1bb5",
+    "pw": "97ae9baa355e9d7517d771e19f5037eea8bb1c7707554b6ed24e1a6263f3bc9c",
+    "senior-prompt-engineer": "66f51c3e99d82b4ad5c49b70c24c621cfef0ef31d22a1e3f49272c475ba50da8",
+    "ship-gate": "4248e6585dd45dce7202460dac221cd49943cf41f23a62040562f93a732b4cf0",
+    "video-content-strategist": "360b32ea3f891c75a44d53af2b9c40059f488ed9011a0bfa6678c946c4fc2a20",
+    "zh-tw-humanizer": "817fd773312419a3e5b31d3f241d4f0d9404a18314dcdb18b3e7e9fe818ae7a7"
+  }
+}
