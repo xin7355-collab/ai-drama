@@ -27,6 +27,7 @@
     trans: ['直切', '淡入', '淡出', '溶接', '閃白', '黑場'],
     videoLang: ['英文', '中文'],
     ref: ['不用', '定裝照'],
+    textDir: ['字朝角色', '字朝鏡頭', '不露字'],
     videoLines: ['帶對白', '不帶（另外配音）'],
   };
 
@@ -84,6 +85,7 @@
       { k: 'outfits', l: '服裝', type: 'rows', prefix: 'o', sub: [{ k: 'name', l: '名稱' }, { k: 'prompt', l: '英文描述' }] },
       { k: 'refImage', l: '定裝照備註', tip: '參考圖檔名或 seed，換工具時對照用' },
       { k: 'voice', l: '聲線', tip: '給配音工具：例 低沉、語速慢、尾音上揚' },
+      { k: 'voiceId', l: '配音音色', tip: '工具＋音色名稱，例：ElevenLabs 自建音色「林夏-01」。每集都用同一個，聲音才不會像換了人' },
     ] },
     locations: { label: '場景', prefix: 'l', fields: [
       { k: 'name', l: '名稱', req: true },
@@ -120,10 +122,13 @@
       { k: 'size', l: '景別', opts: OPT.size },
       { k: 'angle', l: '角度', opts: OPT.angle },
       { k: 'move', l: '運鏡', opts: OPT.move },
-      { k: 'cast', l: '出場角色', type: 'rows', sub: [{ k: 'c', l: '角色', ref: 'characters' }, { k: 'outfit', l: '服裝', ref: 'outfits' }, { k: 'expr', l: '表情' }] },
+      { k: 'cast', l: '出場角色', type: 'rows', sub: [{ k: 'c', l: '角色', ref: 'characters' }, { k: 'outfit', l: '服裝', ref: 'outfits' }, { k: 'expr', l: '表情' }, { k: 'state', l: '狀態（英文）' }], tip: '狀態寫當下看得見的變化，例：rain-soaked hair、a fresh cut on the left cheek；同一場戲要延續' },
+      { k: 'items', l: '道具', type: 'rows', sub: [{ k: 'p', l: '道具', ref: 'props' }, { k: 'state', l: '拿法或位置（英文）' }], tip: '例：in his right hand、on the counter、torn in half。同一場戲沒有劇情原因不要換手或消失' },
       { k: 'action', l: '畫面動作', type: 'area', req: true },
       { k: 'visualEn', l: '畫面描述（英文）', type: 'area', tip: '不寫人名，用外觀或身分指稱' },
       { k: 'motionEn', l: '動態描述（英文）', type: 'area' },
+      { k: 'extrasEn', l: '其他人（英文）', type: 'area', tip: '敵人、手下、路人等沒有角色卡的人。外型寫得跟主角明顯不同（不同髮型、服裝、面罩），AI 才不會把主角的臉複製進人群' },
+      { k: 'textDir', l: '文字朝向', opts: OPT.textDir, tip: '寫字、看手機、看文件的鏡頭才要選。字朝鏡頭只能配過肩或主觀鏡頭；可讀的字一律後製再加' },
       { k: 'lines', l: '對白', type: 'rows', sub: [{ k: 'c', l: '誰', ref: 'characters', extra: ['旁白'] }, { k: 'text', l: '台詞' }, { k: 'emo', l: '情緒' }] },
       { k: 'sfx', l: '音效' },
       { k: 'bgm', l: '配樂' },
@@ -444,6 +449,7 @@
         }
       }
       for (const l of s.lines || []) if (l.c !== '旁白') l.c = resolveRef(project, 'characters', l.c, idMap);
+      for (const it of s.items || []) it.p = resolveRef(project, 'props', it.p, idMap);
     }
   }
 
@@ -507,17 +513,156 @@
       for (const l of s.lines || []) {
         if (l.c && l.c !== '旁白' && !find(project.characters, l.c)) add('error', tag, '說話的人「' + l.c + '」不存在');
       }
+      for (const it of s.items || []) if (it.p && !find(project.props, it.p)) add('error', tag, '道具「' + it.p + '」不存在');
+      lintShotRisks(project, s, add, tag);
     }
+    lintContinuity(project, shots, add);
+    lintVoices(project, shots, add);
     return out;
+  }
+
+  // AI 生圖／生影片的常見錯誤，用文字就抓得到的先抓：字的方向、人群裡冒出主角、寫到卻沒掛上的道具與角色
+  const TEXTY_ZH = /寫字|寫下|寫著|簽名|簽字|簽下|筆跡|紙條|字條|便條|信紙|信封|日記|手機|螢幕|電腦|平板|筆電|文件|合約|收據|診斷書|書頁|翻書|看書|黑板|白板|告示|簡訊|訊息/;
+  const TEXTY_EN = /\b(writ(e|es|ing|ten)|handwrit\w*|signature|letter|diary|notebook|phone|smartphone|screen|laptop|tablet|document|contract|receipt|page|message)\b/i;
+  const CROWD_ZH = /敵人|敵軍|圍攻|圍住|包圍|人群|群眾|眾人|手下|士兵|保鑣|保鏢|打手|殺手|混混|刺客|路人|賓客|圍觀|一群|大家/;
+  const CROWD_EN = /\b(crowd|enemies|enemy|guards|soldiers|thugs|henchmen|mob|bystanders|onlookers|guests|assassins|a group of)\b/i;
+  const HAND_RE = /\b(left|right) hand\b|([左右])手/i;
+
+  function isTexty(s) { return TEXTY_ZH.test(str(s.action)) || TEXTY_EN.test(str(s.visualEn) + ' ' + str(s.motionEn)); }
+  function hasCrowd(s) { return CROWD_ZH.test(str(s.action)) || CROWD_EN.test(str(s.visualEn) + ' ' + str(s.motionEn)); }
+  function handOf(state) {
+    const m = HAND_RE.exec(str(state));
+    if (!m) return '';
+    return (m[1] || '').toLowerCase() === 'left' || m[2] === '左' ? '左手' : '右手';
+  }
+
+  function lintShotRisks(project, s, add, tag) {
+    if (isTexty(s) && !s.textDir) add('warn', tag, '這鏡有寫字、文件或螢幕：AI 常把字轉成朝向觀眾。請選「文字朝向」（字朝角色／字朝鏡頭／不露字）');
+    if (s.textDir === '字朝鏡頭' && !['過肩', '主觀', '俯拍'].includes(s.angle)) add('warn', tag, '字要朝鏡頭時，角度要用過肩、主觀或俯拍，否則等於要角色把字倒著寫給觀眾看');
+    if (hasCrowd(s) && !str(s.extrasEn)) add('warn', tag, '畫面有敵人或人群，但沒寫「其他人（英文）」：AI 常把主角的臉複製進人群，請寫出他們跟主角不同的外型');
+    const text = str(s.action);
+    for (const ch of project.characters) {
+      if (ch.name && ch.name.length >= 2 && text.includes(ch.name) && !(s.cast || []).some(r => r.c === ch.id) && !(s.lines || []).some(l => l.c === ch.id)) {
+        add('warn', tag, '畫面寫到「' + ch.name + '」，但出場角色沒有' + ch.name + '：有入鏡就加進出場角色，外觀和服裝才會帶進提示詞');
+      }
+    }
+    for (const pr of project.props) {
+      if (pr.name && pr.name.length >= 2 && text.includes(pr.name) && !(s.items || []).some(it => it.p === pr.id)) {
+        add('warn', tag, '畫面寫到「' + pr.name + '」，但沒掛上道具：外觀會每鏡不同，請加進這鏡的道具');
+      }
+    }
+  }
+
+  // 同一集同一場（scene）裡，場景、時段、服裝、拿道具的手都不該無故改變；要變就分場
+  function lintContinuity(project, shots, add) {
+    const groups = new Map();
+    for (const s of shots) {
+      const k = s.ep + '#' + (s.scene || 1);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(s);
+    }
+    for (const list of groups.values()) {
+      list.sort(byOrder);
+      const ep = find(project.episodes, list[0].ep);
+      const where = (ep ? '第' + ep.no + '集' : list[0].ep) + '第' + (list[0].scene || 1) + '場';
+      let loc = '', time = '';
+      const fits = new Map(), hands = new Map(), held = new Map();
+      for (const s of list) {
+        const tag = where + ' 鏡 ' + s.id;
+        if (s.loc && loc && s.loc !== loc) add('warn', tag, '同一場換了場景（' + refName(project, 'locations', loc) + '→' + refName(project, 'locations', s.loc) + '），請改成下一場');
+        if (s.time && time && s.time !== time) add('warn', tag, '同一場的時段從「' + time + '」變成「' + s.time + '」，光線會跳');
+        if (s.loc) loc = s.loc;
+        if (s.time) time = s.time;
+        for (const r of s.cast || []) {
+          const ch = find(project.characters, r.c);
+          if (!ch) continue;
+          const fit = find(ch.outfits, r.outfit) || (ch.outfits || [])[0];
+          const fid = fit ? fit.id : '';
+          if (fits.has(ch.id) && fits.get(ch.id) !== fid) {
+            const before = find(ch.outfits, fits.get(ch.id));
+            add('warn', tag, ch.name + '的服裝從「' + (before ? before.name : '未設定') + '」變成「' + (fit ? fit.name : '未設定') + '」：同一場戲中間換裝會穿幫，真的要換就分場');
+          }
+          fits.set(ch.id, fid);
+        }
+        const now = new Set();
+        for (const it of s.items || []) {
+          const pr = find(project.props, it.p);
+          if (!pr) continue;
+          now.add(pr.id);
+          const hand = handOf(it.state);
+          if (hand && hands.has(pr.id) && hands.get(pr.id) !== hand) add('warn', tag, '「' + pr.name + '」從' + hands.get(pr.id) + '換到' + hand + '：同一場戲中間換手會穿幫');
+          if (hand) hands.set(pr.id, hand);
+          held.set(pr.id, !!hand);
+        }
+        for (const [pid, wasHeld] of held) {
+          if (wasHeld && !now.has(pid) && (s.cast || []).length) {
+            add('warn', tag, '「' + refName(project, 'props', pid) + '」上一鏡還拿在手上，這鏡沒掛上：還拿著就加進道具，放下了就在動作寫出來，AI 才不會讓它憑空消失');
+            held.set(pid, false);
+          }
+        }
+      }
+    }
+  }
+
+  // 聲音不連貫多半是每集換了音色；有台詞的角色都要寫聲線、指定同一個配音音色
+  function lintVoices(project, shots, add) {
+    const speaking = new Set();
+    for (const s of shots) for (const l of s.lines || []) if (l.c && l.c !== '旁白' && str(l.text)) speaking.add(l.c);
+    for (const id of speaking) {
+      const ch = find(project.characters, id);
+      if (!ch) continue;
+      if (!ch.voice) add('warn', '角色「' + ch.name + '」', '有台詞但沒寫聲線，配音容易每集不一樣');
+      if (!ch.voiceId) add('warn', '角色「' + ch.name + '」', '有台詞但沒指定配音音色：每集都用同一個音色，觀眾才不會以為換了人');
+    }
+  }
+
+  function refName(project, coll, id) {
+    const it = find(project[coll], id);
+    return it ? it.name || id : id;
   }
 
   /* ---------- 提示詞組裝 ---------- */
 
+  function castFit(project, r) {
+    const ch = find(project.characters, r.c);
+    return ch ? find(ch.outfits, r.outfit) || (ch.outfits || [])[0] : null;
+  }
   function castPhrase(project, r) {
     const ch = find(project.characters, r.c);
     if (!ch) return '';
-    const fit = find(ch.outfits, r.outfit) || (ch.outfits || [])[0];
-    return [ch.appearance, fit && fit.prompt ? 'wearing ' + fit.prompt : ''].filter(Boolean).join(', ');
+    const fit = castFit(project, r);
+    return [ch.appearance, fit && fit.prompt ? 'wearing ' + fit.prompt : '', r.state].map(x => str(x)).filter(Boolean).join(', ');
+  }
+  function itemPhrase(project, it) {
+    const pr = find(project.props, it.p);
+    return pr && pr.prompt ? [pr.prompt, it.state].map(x => str(x)).filter(Boolean).join(', ') : '';
+  }
+
+  // 文字朝向：模型預設把字轉向觀眾，所以要明講字是給誰看的；可讀的字交給後製，AI 生的中文字幾乎都會壞
+  const TEXT_DIR_EN = {
+    '字朝角色': 'any writing, page or phone screen faces the character using it, away from the camera: from the camera side the paper is seen upside down and the phone from its back, no legible words',
+    '字朝鏡頭': 'the writing, page or screen is seen from the character\'s own point of view, upright for both the character and the camera, shown as blurred marks with no legible words, text added later in editing',
+    '不露字': 'the paper or screen is angled away so that no writing is visible',
+  };
+  const TEXT_DIR_ZH = {
+    '字朝角色': '紙上的字和手機螢幕朝向角色、背對鏡頭（鏡頭這邊看到的是倒過來的紙和手機背面），不出現可讀的字',
+    '字朝鏡頭': '從角色自己的視角看字，字對角色和鏡頭都是正的，只呈現模糊筆跡、不出現可讀的字，文字後製再加',
+    '不露字': '紙面或螢幕轉開，不露出任何字',
+  };
+
+  // 人群裡冒出主角、同一人出現兩次，是多人鏡頭最常見的崩法：每次都寫明每人只出現一次、其他人長得不一樣
+  function crowdGuard(project, shot, zh) {
+    const cast = (shot.cast || []).filter(r => find(project.characters, r.c));
+    const extras = str(shot.extrasEn);
+    const out = [];
+    if (zh) {
+      if (cast.length) out.push('每個角色在畫面中只出現一次，不要重複的人');
+      if (extras) out.push('其他人：' + extras + '；他們的臉、髮型、體型、服裝都和' + cast.map(r => speakerName(project, r.c)).join('、') + '明顯不同');
+      return out;
+    }
+    if (cast.length) out.push(cast.length > 1 ? 'each named character appears only once in the frame, no duplicate people' : 'the main character appears only once in the frame, no duplicate of them');
+    if (extras) out.push('other people: ' + extras + (cast.length ? ', with faces, hairstyles, builds and clothing clearly different from ' + cast.map(r => whoEn(project, r.c)).filter((x, i, a) => a.indexOf(x) === i).join(' and ') : ''));
+    return out;
   }
 
   // 有上傳定裝照時放最前面：模型先讀到「照參考圖」，才不會依文字描述重畫一張臉（咒語盒「保留長相」模式的作法）
@@ -532,13 +677,16 @@
       EN.size[shot.size], EN.angle[shot.angle],
       shot.visualEn || shot.action,
       (shot.cast || []).map(r => castPhrase(project, r)).filter(Boolean).join('; '),
+      (shot.items || []).map(it => itemPhrase(project, it)).filter(Boolean).join('; '),
+    ].concat(crowdGuard(project, shot, false), [
+      TEXT_DIR_EN[shot.textDir],
       loc ? 'setting: ' + loc.prompt : '',
       EN.time[shot.time],
       (loc && loc.lighting) || st.lighting,
       st.palette,
       st.suffix,
       EN.format[project.meta.format],
-    ];
+    ]);
     return parts.map(x => str(x)).filter(Boolean).join(', ');
   }
 
@@ -557,8 +705,10 @@
     const silent = (shot.cast || []).some(r => !speakers.has(r.c));
     const withText = project.style.videoLines !== '不帶（另外配音）';
     const out = [];
+    // 聲線放進每一句：會自己出聲的影片工具每次生成都重新挑聲音，不寫就每鏡換一種嗓子
+    const voiceOf = c => { const ch = find(project.characters, c); return ch && ch.voice ? str(ch.voice) : ''; };
     if (zh) {
-      if (lines.length && withText) out.push('對白：' + lines.map(l => (l.c === '旁白' ? '旁白（畫外音）' : speakerName(project, l.c)) + (l.emo ? '（' + l.emo + '）' : '') + '說「' + str(l.text) + '」').join('；'));
+      if (lines.length && withText) out.push('對白：' + lines.map(l => (l.c === '旁白' ? '旁白（畫外音）' : speakerName(project, l.c)) + paren([voiceOf(l.c) ? '聲線：' + voiceOf(l.c) : '', l.emo].filter(Boolean).join('；'), '（', '）') + '說「' + str(l.text) + '」').join('；'));
       else if (lines.length) out.push(lines.some(l => l.c !== '旁白') ? '說話的人嘴巴自然開合，之後另外配音' : '');
       if (lines.length && lines.every(l => l.c === '旁白')) out.push('旁白是畫外音，畫面裡的人不說話、嘴唇閉合');
       else if (lines.length && silent) out.push('沒說話的人嘴唇閉合');
@@ -566,7 +716,7 @@
       return out.filter(Boolean);
     }
     if (lines.length && withText) {
-      out.push(lines.map(l => (l.c === '旁白' ? 'a voice-over narrator (off screen)' : whoEn(project, l.c)) + ' says in Taiwanese Mandarin' + (l.emo ? ' (' + l.emo + ')' : '') + ': "' + str(l.text) + '"').join('; then '));
+      out.push(lines.map(l => (l.c === '旁白' ? 'a voice-over narrator (off screen)' : whoEn(project, l.c)) + ' says in Taiwanese Mandarin' + paren([voiceOf(l.c) ? 'voice: ' + voiceOf(l.c) : '', l.emo].filter(Boolean).join('; '), ' (', ')') + ': "' + str(l.text) + '"').join('; then '));
     } else if (lines.some(l => l.c !== '旁白')) {
       out.push(lines.filter(l => l.c !== '旁白').map(l => whoEn(project, l.c)).filter((x, i, a) => a.indexOf(x) === i).join(' and ') + ' speaks with natural lip movement, audio dubbed later');
     }
@@ -574,6 +724,36 @@
     else if (lines.length && silent) out.push('characters who are not speaking keep their lips closed');
     out.push('no subtitles or on-screen text');
     return out;
+  }
+
+  function paren(x, open, close) { return x ? open + x + close : ''; }
+
+  // 圖生影片也要重複服裝與道具的固定描述（short-drama-video-prompts 的鎖定字規則）：
+  // 影片模型只看首幀，幾秒後衣服、武器就開始變形或換手，文字裡有寫才拉得回來
+  function videoLocks(project, shot, zh) {
+    const out = [];
+    for (const r of shot.cast || []) {
+      const ch = find(project.characters, r.c);
+      const fit = castFit(project, r);
+      if (!ch || !(fit && fit.prompt) && !r.state) continue;
+      if (zh) out.push(ch.name + '全程穿同一套衣服' + paren(fit && str(fit.prompt), '：', '') + paren(str(r.state), '，狀態：', ''));
+      else out.push(whoEn(project, r.c) + ' keeps the same outfit the whole time' + paren(fit && str(fit.prompt), ': ', '') + paren(str(r.state), ', ', ''));
+    }
+    for (const it of shot.items || []) {
+      const pr = find(project.props, it.p);
+      if (!pr) continue;
+      if (zh) out.push('「' + pr.name + '」' + paren(str(pr.prompt), '（', '）') + '保持同一個樣子' + paren(str(it.state), '：', '') + '，不變形、不換手、不消失');
+      else if (pr.prompt) out.push(str(pr.prompt) + ' stays the same' + paren(str(it.state), ', ', '') + ', no change of hands, no morphing, it does not disappear');
+    }
+    return out;
+  }
+
+  // 每鏡各自生出不同配樂，剪起來會一直跳；配樂統一後製加，單鏡只留環境音與音效
+  function videoSound(project, shot, zh) {
+    const loc = find(project.locations, shot.loc);
+    const amb = loc && str(loc.ambience);
+    if (zh) return [amb ? '環境音：' + amb : '', shot.sfx ? '音效：' + str(shot.sfx) : '', '不要配樂'];
+    return [amb ? 'ambient sound: ' + amb : '', shot.sfx ? 'sound effect: ' + str(shot.sfx) : '', 'no background music'];
   }
 
   function videoPrompt(project, shot) {
@@ -585,13 +765,15 @@
         loc ? '場景：' + loc.name : '',
         [shot.size, shot.angle].filter(Boolean).join('，'),
         shot.move ? '鏡頭：' + shot.move : '',
-      ].concat(videoLines(project, shot, true), ['長度約 ' + (shot.sec || 5) + ' 秒']).filter(Boolean).join('。');
+      ].concat(videoLocks(project, shot, true), crowdGuard(project, shot, true), [TEXT_DIR_ZH[shot.textDir]],
+        videoLines(project, shot, true), videoSound(project, shot, true), ['長度約 ' + (shot.sec || 5) + ' 秒']).filter(Boolean).join('。');
     }
     return [
       shot.motionEn || shot.visualEn || shot.action,
       EN.move[shot.move],
       EN.size[shot.size],
-    ].concat(videoLines(project, shot, false), ['about ' + (shot.sec || 5) + ' seconds']).map(x => str(x)).filter(Boolean).join(', ');
+    ].concat(videoLocks(project, shot, false), crowdGuard(project, shot, false), [TEXT_DIR_EN[shot.textDir]],
+      videoLines(project, shot, false), videoSound(project, shot, false), ['about ' + (shot.sec || 5) + ' seconds']).map(x => str(x)).filter(Boolean).join(', ');
   }
 
   /* ---------- 定裝照提示詞 ---------- */
@@ -674,7 +856,7 @@
   }
 
   function exportCSV(project, epId) {
-    const head = ['集', '鏡號', '場次', '開始', '結束', '秒數', '場景', '時段', '景別', '角度', '運鏡', '出場', '畫面動作', '對白', '音效', '配樂', '轉場', '進度', '圖片提示詞', '影片提示詞'];
+    const head = ['集', '鏡號', '場次', '開始', '結束', '秒數', '場景', '時段', '景別', '角度', '運鏡', '出場', '道具', '畫面動作', '對白', '音效', '配樂', '轉場', '進度', '圖片提示詞', '影片提示詞'];
     const rows = [head];
     const eps = project.episodes.filter(e => !epId || e.id === epId).sort((a, b) => a.no - b.no);
     for (const e of eps) {
@@ -683,7 +865,7 @@
         const loc = find(project.locations, s.loc);
         rows.push([
           e.no, s.id, s.scene, clock(t), clock(t + (Number(s.sec) || 0)), s.sec, loc ? loc.name : '', s.time, s.size, s.angle, s.move,
-          (s.cast || []).map(r => speakerName(project, r.c)).join('、'), s.action,
+          (s.cast || []).map(r => speakerName(project, r.c)).join('、'), (s.items || []).map(it => refName(project, 'props', it.p)).join('、'), s.action,
           (s.lines || []).map(l => speakerName(project, l.c) + '：' + l.text).join(' / '),
           s.sfx, s.bgm, s.trans, s.status, imagePrompt(project, s), videoPrompt(project, s),
         ]);
@@ -713,7 +895,7 @@
       for (const [cid, fits] of used) {
         const ch = find(project.characters, cid);
         out.push('');
-        out.push('▌' + (ch.name || cid) + (ch.voice ? '｜聲線：' + ch.voice : ''));
+        out.push('▌' + (ch.name || cid) + (ch.voice ? '｜聲線：' + ch.voice : '') + (ch.voiceId ? '｜音色：' + ch.voiceId : ''));
         out.push('［臉部］' + sheetPrompt(project, cid, 'face'));
         for (const oid of fits) {
           const fit = find(ch.outfits, oid);
@@ -734,7 +916,7 @@
         out.push('［影片］' + videoPrompt(project, s));
         for (const l of s.lines || []) {
           const ch = find(project.characters, l.c);
-          const voice = ch && ch.voice ? '｜聲線：' + ch.voice : '';
+          const voice = (ch && ch.voice ? '｜聲線：' + ch.voice : '') + (ch && ch.voiceId ? '｜音色：' + ch.voiceId : '');
           out.push('［配音］' + speakerName(project, l.c) + (l.emo ? '（' + l.emo + '）' : '') + '：' + l.text + voice);
         }
         if (s.sfx) out.push('［音效］' + s.sfx);
@@ -743,6 +925,49 @@
       out.push('');
     }
     return out.join('\n');
+  }
+
+  // 劇本：給人讀、給 AI 讀都可以的純文字（場次標題、畫面、對白、音效），沒拆分鏡的集就輸出大綱與小說版
+  function exportScript(project, epId) {
+    const m = project.meta;
+    const eps = project.episodes.filter(e => !epId || e.id === epId).sort((a, b) => a.no - b.no);
+    const out = [];
+    if (!epId) {
+      out.push('《' + (m.title || '未命名') + '》劇本');
+      if (m.logline) out.push('一句話故事：' + m.logline);
+      out.push('');
+    }
+    for (const e of eps) {
+      const shots = epShots(project, e.id);
+      const total = shots.reduce((a, s) => a + (Number(s.sec) || 0), 0);
+      out.push('《' + (m.title || '未命名') + '》第' + e.no + '集' + (e.title ? '　' + e.title : ''));
+      if (shots.length) out.push('（' + shots.length + ' 鏡，約 ' + clock(total) + '）');
+      if (e.hook) out.push('鉤子：' + e.hook);
+      if (!shots.length) {
+        for (const [k, l] of [['synopsis', '劇情'], ['conflict', '衝突'], ['twist', '反轉']]) if (e[k]) out.push(l + '：' + e[k]);
+        if (e.source) out.push('', e.source);
+      }
+      let t = 0, last = '';
+      for (const s of shots) {
+        const loc = find(project.locations, s.loc);
+        const head = '第 ' + (s.scene || 1) + ' 場　' + (loc ? loc.name : '（未指定場景）') + '（' + [loc && loc.type, s.time].filter(Boolean).join('・') + '）';
+        if (head !== last) { out.push('', '—— ' + head + ' ——'); last = head; }
+        const sec = Number(s.sec) || 0;
+        const cam = [s.size, s.angle, s.move].filter(Boolean).join('・');
+        out.push('', '【' + s.id + '｜' + clock(t) + '–' + clock(t + sec) + (cam ? '｜' + cam : '') + '】');
+        if (s.action) out.push(s.action);
+        const who = (s.cast || []).map(r => speakerName(project, r.c) + paren(str(r.expr), '（', '）')).join('、');
+        if (who) out.push('出場：' + who);
+        if ((s.items || []).length) out.push('道具：' + s.items.map(it => refName(project, 'props', it.p)).join('、'));
+        for (const l of s.lines || []) if (str(l.text)) out.push(speakerName(project, l.c) + paren(str(l.emo), '（', '）') + '：' + str(l.text));
+        if (s.sfx) out.push('音效：' + s.sfx);
+        t += sec;
+      }
+      if (e.cliffhanger) out.push('', '結尾懸念：' + e.cliffhanger);
+      out.push('', '');
+    }
+    if (!eps.length) out.push('（還沒有分集）');
+    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
   }
 
   function fieldValue(f, v, project) {
@@ -892,7 +1117,7 @@
     },
     episodes: { episodes: [{ id: 'e1', no: 1, title: '凌晨三點的客人', hook: '收據上的簽名是她自己的字', synopsis: '……', conflict: '……', twist: '……', cliffhanger: '監視器裡，店裡只有她一個人', seconds: 90 }] },
     novel: { episodes: [{ id: 'e1', source: '凌晨三點，自動門響了。\n林夏抬頭……' }] },
-    shots: { _mode: 'replace', shots: [{ id: 'e1-01', ep: 'e1', scene: 1, order: 1, sec: 3, loc: 'l1', time: '深夜', size: '大特寫', angle: '俯拍', move: '推', cast: [{ c: 'c1', outfit: 'o1', expr: '僵住' }], action: '收據上的簽名特寫，林夏的手指停在名字上', visualEn: 'extreme close-up of a faded receipt on a counter, a young woman\'s finger frozen on a handwritten signature', motionEn: 'the finger trembles slightly as the camera slowly pushes in on the signature', lines: [{ c: 'c1', text: '這是我的字。', emo: '低聲' }], sfx: '冰箱壓縮機低鳴', status: '待生成' }] },
+    shots: { _mode: 'replace', shots: [{ id: 'e1-01', ep: 'e1', scene: 1, order: 1, sec: 3, loc: 'l1', time: '深夜', size: '大特寫', angle: '俯拍', move: '推', cast: [{ c: 'c1', outfit: 'o1', expr: '僵住' }], items: [{ p: 'p1', state: 'lying flat on the counter under her finger' }], textDir: '字朝鏡頭', action: '收據上的簽名特寫，林夏的手指停在名字上', visualEn: 'extreme close-up of a faded receipt on a counter, a young woman\'s finger frozen on a handwritten signature', motionEn: 'the finger trembles slightly as the camera slowly pushes in on the signature', lines: [{ c: 'c1', text: '這是我的字。', emo: '低聲' }], sfx: '冰箱壓縮機低鳴', status: '待生成' }] },
     polish: { _mode: 'patch', shots: [{ id: 'e1-01', lines: [{ c: 'c1', text: '……我的字？', emo: '低聲' }] }] },
   };
 
@@ -968,7 +1193,12 @@
         ...((m.format || '9:16 直式') === '9:16 直式' ? ['- 9:16 直式畫面窄，以中景、近景、特寫為主；交代空間用前景、後景的縱深（門框、桌沿、背影），少用遠景。'] : []),
         '- 對白每秒最多 4 個字：5 秒的鏡頭台詞不超過 20 字，講不完就拆鏡。',
         '- 同一鏡最多 3 個角色入鏡，最好 1～2 個。',
-        '- cast 與 lines 的 c 只能用角色 id，旁白寫 "旁白"；loc 只能用場景 id；outfit 用該角色的服裝 id。',
+        '- cast 與 lines 的 c 只能用角色 id，旁白寫 "旁白"；loc 只能用場景 id；outfit 用該角色的服裝 id；items 的 p 只能用道具 id。',
+        '- 同一場戲（同一個 scene）不換場景、不換時段、不換裝；要換就開新的 scene。',
+        '- 畫面裡出現設定集的道具（含武器）就放進 items，state 用英文寫拿法或位置（in his right hand、on the counter）；同一場戲沒有劇情原因不換手、不消失，放下了要在 action 寫出來。',
+        '- cast.state 用英文寫當下看得見的狀態（rain-soaked hair、a fresh cut on the left cheek），受傷、淋濕、弄髒之後的鏡頭要延續。',
+        '- 敵人、手下、路人等沒有角色卡的人寫在 extrasEn（英文），外型要跟主角明顯不同（不同髮型、服裝、面罩），不要寫成跟主角相像的人，免得 AI 把主角的臉複製進人群。',
+        '- 有寫字、文件、手機或螢幕的鏡頭要填 textDir：字朝角色（鏡頭在對面，看到倒過來的紙或手機背面）／字朝鏡頭（只能配過肩、主觀或俯拍）／不露字。要讓觀眾讀到的字一律後製加，不靠 AI 生成。',
         '- visualEn：英文，這一鏡的第一個畫面（定格，攝影師一次拍得下來）。寫每個人在畫面左／右、前景／後景的位置、身體朝向、看著誰、手上拿什麼、一個表情；不要寫人名，用外觀或身分指稱，例如 the young woman in the store vest。不要寫 then、表情從 A 變 B、鏡頭移動。',
         '- motionEn：英文一句，依序寫起始狀態 → 一個主要動作（停在碰到某物或某個位置，不寫公分）→ 結束狀態。一鏡只有一個主要變化，5 秒最多兩個動作。',
         '- 避開 AI 影片容易崩的動作：兩人搶東西或精準接住、三步以上的雙手操作、只靠微表情撐的戲、「沒有接話」這種否定動作、心理狀態（像是、忽然明白）。改成拆到相鄰兩鏡、改由物件或聲音交代。',
@@ -999,6 +1229,7 @@
         '4. 對白：哪幾句有 AI 味或太長，直接給改寫',
         '5. AI 生成風險：哪幾鏡人太多、動作太複雜、手部或文字特寫容易崩，建議怎麼拆或改',
         '6. 首幀與動態：visualEn 是不是只有一個瞬間、站位與視線清不清楚；motionEn 是不是一鏡只有一個主要變化、有沒有寫結束狀態',
+        '7. AI 常見穿幫：同一場戲換裝、武器或道具換手或消失、受傷淋濕的狀態沒延續、人群或敵人裡可能冒出主角的臉、寫字或看手機時字的方向、有台詞的角色聲線不一致',
       ].join('\n');
     } else {
       throw new Error('不認得的工作：' + task);
@@ -1014,8 +1245,8 @@
       meta: { genre: '懸疑', episodes: 12, epSeconds: 60, logline: '夜班店員收到一張十年前、署名是她自己的收據，必須在天亮前查出誰在模仿她的人生。', hook: '每集出現一個「不可能存在的證據」', audience: '18～35 歲、愛看反轉的短影音觀眾', tone: '冷調懸疑', theme: '被偷走的記憶' },
       style: { look: '寫實電影感', era: '現代台灣都市', palette: 'cold teal with sodium orange accents', lighting: 'harsh fluorescent light with deep shadows', music: '低頻電子脈衝、鋼琴單音' },
       characters: [
-        { id: 'c1', name: '林夏', role: '主角', age: '26', gender: '女', job: '便利商店夜班店員', personality: '冷靜、觀察力強、不信任人', desire: '查出收據的來源', fear: '自己其實瘋了', secret: '十年前失去一段記憶', arc: '從逃避過去到主動挖開真相', speech: '話少，常用反問句', appearance: 'a 26-year-old East Asian woman, shoulder-length straight black hair, small silver hair clip on the left side, slim build, mole under the right eye', outfits: [{ id: 'o1', name: '店員制服', prompt: 'green and white convenience store vest over a charcoal hoodie' }], voice: '偏低、語速平穩' },
-        { id: 'c2', name: '黑衣客', role: '反派', age: '40 多歲', gender: '男', job: '不明', personality: '禮貌得令人發毛', desire: '讓林夏想起那一晚', secret: '十年前事件的目擊者', speech: '慢條斯理、用敬語', appearance: 'a tall East Asian man in his 40s, neatly combed hair with gray streaks, thin scar across the left eyebrow, pale face', outfits: [{ id: 'o1', name: '長大衣', prompt: 'long black wool coat, black leather gloves' }], voice: '低沉、每句停頓很久' },
+        { id: 'c1', name: '林夏', role: '主角', age: '26', gender: '女', job: '便利商店夜班店員', personality: '冷靜、觀察力強、不信任人', desire: '查出收據的來源', fear: '自己其實瘋了', secret: '十年前失去一段記憶', arc: '從逃避過去到主動挖開真相', speech: '話少，常用反問句', appearance: 'a 26-year-old East Asian woman, shoulder-length straight black hair, small silver hair clip on the left side, slim build, mole under the right eye', outfits: [{ id: 'o1', name: '店員制服', prompt: 'green and white convenience store vest over a charcoal hoodie' }], voice: '偏低、語速平穩', voiceId: 'ElevenLabs 自建音色「林夏-01」' },
+        { id: 'c2', name: '黑衣客', role: '反派', age: '40 多歲', gender: '男', job: '不明', personality: '禮貌得令人發毛', desire: '讓林夏想起那一晚', secret: '十年前事件的目擊者', speech: '慢條斯理、用敬語', appearance: 'a tall East Asian man in his 40s, neatly combed hair with gray streaks, thin scar across the left eyebrow, pale face', outfits: [{ id: 'o1', name: '長大衣', prompt: 'long black wool coat, black leather gloves' }], voice: '低沉、每句停頓很久', voiceId: 'ElevenLabs 自建音色「黑衣客-01」' },
       ],
       locations: [
         { id: 'l1', name: '便利商店', type: '內景', desc: '凌晨三點、幾乎沒有客人的街角便利商店', prompt: 'small 24-hour convenience store interior, snack shelves, glass sliding door, counter with cash register, security camera in the corner', lighting: 'cold fluorescent light', ambience: '冰箱壓縮機低鳴、自動門提示音' },
@@ -1027,12 +1258,12 @@
     merge(p, {
       _mode: 'replace',
       shots: [
-        { id: 'e1-01', ep: 'e1', scene: 1, order: 1, sec: 3, loc: 'l1', time: '深夜', size: '大特寫', angle: '俯拍', move: '推', cast: [{ c: 'c1', outfit: 'o1', expr: '僵住' }], action: '收據特寫，林夏的手指停在簽名上', visualEn: 'extreme close-up of a faded receipt on a store counter, a young woman\'s finger frozen on a handwritten signature', motionEn: 'the finger trembles as the camera slowly pushes in on the signature', lines: [{ c: 'c1', text: '這是我的字。', emo: '低聲' }], sfx: '冰箱壓縮機低鳴' },
+        { id: 'e1-01', ep: 'e1', scene: 1, order: 1, sec: 3, loc: 'l1', time: '深夜', size: '大特寫', angle: '俯拍', move: '推', cast: [{ c: 'c1', outfit: 'o1', expr: '僵住' }], items: [{ p: 'p1', state: 'lying flat on the counter under her finger' }], textDir: '字朝鏡頭', action: '收據特寫，林夏的手指停在簽名上', visualEn: 'extreme close-up of a faded receipt on a store counter, a young woman\'s finger frozen on a handwritten signature', motionEn: 'the finger trembles as the camera slowly pushes in on the signature', lines: [{ c: 'c1', text: '這是我的字。', emo: '低聲' }], sfx: '冰箱壓縮機低鳴' },
         { id: 'e1-02', ep: 'e1', scene: 1, order: 2, sec: 5, loc: 'l1', time: '深夜', size: '中景', angle: '平視', move: '固定', cast: [{ c: 'c1', outfit: 'o1', expr: '警戒' }, { c: 'c2', outfit: 'o1', expr: '微笑' }], action: '黑衣客隔著櫃檯微笑，把零錢一枚枚疊好', visualEn: 'medium shot across a convenience store counter, a pale man in a black coat smiles and stacks coins neatly while the young cashier stares at him', motionEn: 'the man slowly stacks the last coin, the cashier does not move', lines: [{ c: 'c2', text: '妳還是習慣簽在右下角。', emo: '溫和' }] },
         { id: 'e1-03', ep: 'e1', scene: 1, order: 3, sec: 4, loc: 'l1', time: '深夜', size: '近景', angle: '平視', move: '推', cast: [{ c: 'c1', outfit: 'o1', expr: '壓住驚慌' }], action: '林夏抬眼，聲音壓得很低', visualEn: 'medium close-up of the young cashier lifting her eyes, jaw tight, fluorescent light flickering above', motionEn: 'she raises her eyes slowly, the light flickers once', lines: [{ c: 'c1', text: '你是誰？', emo: '壓低' }] },
         { id: 'e1-04', ep: 'e1', scene: 1, order: 4, sec: 5, loc: 'l1', time: '深夜', size: '中景', angle: '過肩', move: '固定', cast: [{ c: 'c2', outfit: 'o1', expr: '笑意更深' }], action: '黑衣客湊近，叫出她的小名', visualEn: 'over-the-shoulder shot from behind the cashier, the man in the black coat leans closer across the counter', motionEn: 'he leans in slowly and whispers', lines: [{ c: 'c2', text: '小夏，妳又忘記了。', emo: '耳語' }] },
         { id: 'e1-05', ep: 'e1', scene: 2, order: 5, sec: 5, loc: 'l2', time: '深夜', size: '遠景', angle: '平視', move: '跟', cast: [{ c: 'c1', outfit: 'o1', expr: '喘氣' }], action: '林夏衝出自動門，騎樓空無一人，只有雨', visualEn: 'wide shot of the young woman bursting out of a glass door onto an empty rainy arcade sidewalk, neon reflections on wet tiles', motionEn: 'the camera follows her as she runs out and stops, looking left and right', sfx: '自動門提示音、雨聲' },
-        { id: 'e1-06', ep: 'e1', scene: 3, order: 6, sec: 6, loc: 'l1', time: '深夜', size: '特寫', angle: '主觀', move: '推', cast: [], action: '監視器畫面：整晚店裡只有林夏一個人', visualEn: 'close-up of a small CCTV monitor showing grainy footage of the store, only one cashier visible, the counter empty in front of her', motionEn: 'the footage fast-forwards, the store stays empty except for her', lines: [{ c: '旁白', text: '那天晚上，沒有人來過。', emo: '平淡' }], sfx: '監視器雜訊' },
+        { id: 'e1-06', ep: 'e1', scene: 3, order: 6, sec: 6, loc: 'l1', time: '深夜', size: '特寫', angle: '主觀', move: '推', cast: [{ c: 'c1', outfit: 'o1', state: 'seen small and grainy inside the CCTV footage' }], action: '監視器畫面：整晚店裡只有林夏一個人', visualEn: 'close-up of a small CCTV monitor showing grainy footage of the store, only one cashier visible, the counter empty in front of her', motionEn: 'the footage fast-forwards, the store stays empty except for her', lines: [{ c: '旁白', text: '那天晚上，沒有人來過。', emo: '平淡' }], sfx: '監視器雜訊' },
       ],
     }, { touch: false });
     return p;
@@ -1041,7 +1272,7 @@
   return {
     SCHEMA, SPEC, OPT, EN, TASKS, COLLECTIONS, CHARS_PER_SEC,
     newProject, newItem, normalize, merge, extractJSON, lint,
-    imagePrompt, videoPrompt, sheetPrompt, SHEETS, aiPrompt, exportSRT, exportCSV, exportPromptPack, exportMarkdown,
+    imagePrompt, videoPrompt, sheetPrompt, SHEETS, aiPrompt, exportSRT, exportCSV, exportPromptPack, exportMarkdown, exportScript,
     epShots, epSeconds, speakerName, demoProject, clone, find, clock, EXAMPLES,
   };
 });

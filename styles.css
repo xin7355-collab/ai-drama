@@ -126,6 +126,10 @@ textarea.mono, .prompt { font-family: var(--mono); font-size: 13px; }
 .inline select { flex: 1 1 auto; min-width: 0; }
 .inline .btn { flex: 0 0 auto; }
 .field.preset { margin-top: 14px; }
+/* 工具連結長得跟清單按鈕一樣；<a> 預設的底線與藍字在這裡只會干擾 */
+a.item, a.btn { color: inherit; text-decoration: none; }
+.badge.cn { background: color-mix(in srgb, var(--warn) 10%, var(--card)); color: var(--warn); }
+.tool-row .btn { flex: 1 1 40%; }
 /* 外觀選單兩欄排，十一個下拉在 iPhone 上不用滑兩個螢幕 */
 .look-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
 .look-grid .field { margin-bottom: 10px; }
@@ -233,7 +237,7 @@ details[open] > summary::before { transform: rotate(45deg); }
 /* 底部分頁 */
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--card); border-top: 1px solid var(--line);
 }

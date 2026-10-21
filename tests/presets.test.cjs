@@ -112,7 +112,7 @@ test('影片提示詞：對白掛上說話的人、旁白與沒說話的人嘴�
   const p = C.demoProject();
   const s2 = C.find(p.shots, 'e1-02');
   let v = C.videoPrompt(p, s2);
-  assert.match(v, /the tall East Asian man in his 40s says in Taiwanese Mandarin \(溫和\): "妳還是習慣簽在右下角。"/);
+  assert.match(v, /the tall East Asian man in his 40s says in Taiwanese Mandarin \(voice: 低沉、每句停頓很久; 溫和\): "妳還是習慣簽在右下角。"/);
   assert.match(v, /not speaking keep their lips closed/);
   assert.match(v, /no subtitles/);
   assert.match(v, /about 5 seconds$/);
@@ -126,7 +126,7 @@ test('影片提示詞：對白掛上說話的人、旁白與沒說話的人嘴�
   assert.match(v, /natural lip movement, audio dubbed later/);
   p.style.videoLang = '中文';
   p.style.videoLines = '帶對白';
-  assert.match(C.videoPrompt(p, s2), /對白：黑衣客（溫和）說「妳還是習慣簽在右下角。」。沒說話的人嘴唇閉合。畫面不要字幕或文字。長度約 5 秒$/);
+  assert.match(C.videoPrompt(p, s2), /對白：黑衣客（聲線：低沉、每句停頓很久；溫和）說「妳還是習慣簽在右下角。」。沒說話的人嘴唇閉合。畫面不要字幕或文字。環境音：冰箱壓縮機低鳴、自動門提示音。不要配樂。長度約 5 秒$/);
 });
 
 test('參考圖模式：只有出場角色的鏡頭才在最前面加「照參考圖」', () => {
@@ -134,7 +134,9 @@ test('參考圖模式：只有出場角色的鏡頭才在最前面加「照參�
   assert.doesNotMatch(C.imagePrompt(p, C.find(p.shots, 'e1-02')), /reference images/);
   p.style.ref = '定裝照';
   assert.match(C.imagePrompt(p, C.find(p.shots, 'e1-02')), /^Use the attached character reference images/);
-  assert.doesNotMatch(C.imagePrompt(p, C.find(p.shots, 'e1-06')), /reference images/);
+  const empty = C.find(p.shots, 'e1-06');
+  empty.cast = [];
+  assert.doesNotMatch(C.imagePrompt(p, empty), /reference images/);
 });
 
 test('提示詞包先列這次用到的角色定裝照，再列分鏡', () => {

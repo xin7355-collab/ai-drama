@@ -17,7 +17,7 @@ const tab = (page, name) => page.getByRole('navigation', { name: '主要分頁' 
 test('第一次開啟載入示範專案，五個分頁都正常且沒有橫向捲動', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#projTitle')).toHaveText('午夜收據（示範）');
-  for (const name of ['企劃', '設定', '分集', '分鏡', '匯出']) {
+  for (const name of ['企劃', '設定', '分集', '分鏡', '匯出', '工具']) {
     await tab(page, name).click();
     await expect(tab(page, name)).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
@@ -286,4 +286,102 @@ test('範本：分集編輯器有類型的鉤子靈感；場景與道具範本�
   const md = (await import('node:fs')).readFileSync(await dl.path(), 'utf8');
   expect(md).toContain('# AI 短劇範本庫');
   expect(md).toContain('冷面王爺');
+});
+
+test('連戲：分鏡掛道具與文字朝向，提醒會跟著消失，提示詞帶入道具外觀', async ({ page, browserName }) => {
+  await page.goto('/');
+  await tab(page, '分鏡').click();
+  await page.getByRole('button', { name: '編輯鏡 e1-03' }).click();
+  const ed = page.getByRole('dialog', { name: '鏡 e1-03' });
+  await ed.getByLabel('畫面動作').fill('林夏低頭在收據背面寫字');
+  await ed.getByRole('button', { name: '新增道具' }).click();
+  await ed.getByLabel('道具', { exact: true }).selectOption({ label: '舊收據' });
+  await ed.getByLabel('拿法或位置（英文）').fill('in her left hand');
+  await expect(ed.locator('.prompt').first()).toContainText('a crumpled faded thermal paper receipt with handwriting, in her left hand');
+  await ed.getByRole('button', { name: '完成' }).click();
+  await expect(page.locator('#shot-e1-03 .chip', { hasText: '舊收據' })).toBeVisible();
+  const issues = page.locator('details', { hasText: '這集的提醒' });
+  await expect(issues).toContainText('這鏡有寫字、文件或螢幕');
+  await page.getByRole('button', { name: '編輯鏡 e1-03' }).click();
+  await ed.getByText(/^進階/).click();
+  await ed.getByLabel('文字朝向').selectOption('字朝角色');
+  await expect(ed.locator('.prompt').first()).toContainText('faces the character using it, away from the camera');
+  await ed.getByRole('button', { name: '完成' }).click();
+  await expect(page.locator('details', { hasText: '這集的提醒' })).not.toContainText('這鏡有寫字');
+  await page.getByRole('button', { name: '複製鏡 e1-03 影片提示詞' }).click();
+  if (browserName === 'chromium') {
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toContain('stays the same, in her left hand, no change of hands');
+    expect(clip).toContain('no background music');
+  }
+});
+
+test('複製劇本：分鏡分頁、分集編輯器、匯出分頁都拿得到同一份劇本', async ({ page, browserName }) => {
+  await page.addInitScript(() => { Object.defineProperty(navigator, 'canShare', { value: undefined }); });
+  await page.goto('/');
+  await tab(page, '分鏡').click();
+  await page.getByRole('button', { name: '複製劇本' }).click();
+  await expect(page.locator('#toast')).toContainText('已複製第1集劇本');
+  if (browserName === 'chromium') {
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toContain('—— 第 1 場　便利商店（內景・深夜） ——');
+    expect(clip).toContain('黑衣客（耳語）：小夏，妳又忘記了。');
+  }
+  await tab(page, '分集').click();
+  await page.getByRole('button', { name: /第1集/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '複製這集劇本' }).click();
+  await expect(page.locator('#toast')).toContainText('已複製第1集劇本');
+  await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
+  await tab(page, '匯出').click();
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /^劇本/ }).click()]);
+  const txt = (await import('node:fs')).readFileSync(await dl.path(), 'utf8');
+  expect(txt).toContain('《午夜收據（示範）》劇本');
+  expect(txt).toContain('結尾懸念：回放監視器');
+  await page.getByRole('button', { name: /^複製劇本/ }).click();
+  await expect(page.locator('#toast')).toContainText('已複製劇本');
+});
+
+test('工具分頁：中國廠牌有標記、連結另開分頁且不帶 referrer、切類別', async ({ page }) => {
+  await page.goto('/');
+  await tab(page, '工具').click();
+  await expect(page.getByLabel('工具類別')).toHaveValue('video');
+  const kling = page.locator('a.item', { hasText: '可靈 Kling' });
+  await expect(kling).toHaveAttribute('href', 'https://kling.ai');
+  await expect(kling).toHaveAttribute('target', '_blank');
+  await expect(kling).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(kling.locator('.badge.cn')).toHaveText('中國廠牌');
+  await expect(kling).toContainText('中國大陸版：https://klingai.com');
+  await expect(page.locator('a.item', { hasText: 'Runway' }).locator('.badge')).toHaveCount(0);
+  await noOverflow(page, '工具分頁');
+  await page.getByLabel('工具類別').selectOption('chat');
+  await expect(page.locator('a.item', { hasText: 'Claude' })).toHaveAttribute('href', 'https://claude.ai');
+  await page.getByText('使用前注意').click();
+  await expect(page.getByText(/klingxai\.com/)).toBeVisible();
+});
+
+test('工具：常用影片工具會變成分鏡編輯器的「開」按鈕，重新整理後保留', async ({ page }) => {
+  await page.goto('/');
+  await tab(page, '工具').click();
+  await page.getByText('常用工具（分鏡編輯器的「開生圖」「開影片」）').click();
+  await page.getByLabel('常用影片工具').selectOption('海螺 Hailuo');
+  await expect(page.locator('#toast')).toContainText('已設為常用影片工具：海螺 Hailuo');
+  await page.reload();
+  await tab(page, '分鏡').click();
+  await page.getByRole('button', { name: '編輯鏡 e1-02' }).click();
+  const ed = page.getByRole('dialog', { name: '鏡 e1-02' });
+  await expect(ed.getByRole('link', { name: '開影片 海螺 Hailuo（中國廠牌）' })).toHaveAttribute('href', 'https://hailuoai.video');
+  await expect(ed.getByRole('link', { name: '開生圖 Gemini（Nano Banana）' })).toHaveAttribute('href', 'https://gemini.google.com');
+});
+
+test('AI 助手：複製指令旁有聊天 AI 的按鈕，「更多 AI」跳到工具分頁', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'AI 助手' }).click();
+  const dlg = page.getByRole('dialog', { name: 'AI 助手' });
+  await expect(dlg.getByRole('link', { name: '開 Claude' })).toHaveAttribute('href', 'https://claude.ai');
+  await expect(dlg.getByRole('link', { name: '開 ChatGPT' })).toHaveAttribute('href', 'https://chatgpt.com');
+  await expect(dlg.getByRole('link', { name: '開 DeepSeek 深度求索（中國廠牌）' })).toBeVisible();
+  await noOverflow(page, 'AI 助手');
+  await dlg.getByRole('button', { name: '更多 AI' }).click();
+  await expect(tab(page, '工具')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByLabel('工具類別')).toHaveValue('chat');
 });

@@ -2,18 +2,20 @@
    所有使用者／AI 給的文字一律用 textContent 放進畫面，不用 innerHTML，避免貼上的內容被當成程式執行。 */
 'use strict';
 (function () {
-  const APP_VER = '1.1.0';
+  const APP_VER = '1.2.0';
   const C = window.DramaCore;
   const P = window.DramaPresets;
+  const T = window.DramaTools;
   const KEY = {
     index: 'aidrama.index',
     cur: 'aidrama.cur',
     tab: 'aidrama.tab',
     p: id => 'aidrama.p.' + id,
     undo: id => 'aidrama.undo.' + id,
+    tools: 'aidrama.tools',
   };
-  const TABS = ['plan', 'setup', 'episodes', 'shots', 'export'];
-  const ui = { tab: 'plan', ep: '', setup: 'characters', aiTask: 'bible', aiEp: '', exportEp: '', sheetKind: 'turnaround', sheetOutfit: '', styleOpen: false };
+  const TABS = ['plan', 'setup', 'episodes', 'shots', 'export', 'tools'];
+  const ui = { tab: 'plan', ep: '', setup: 'characters', aiTask: 'bible', aiEp: '', exportEp: '', sheetKind: 'turnaround', sheetOutfit: '', styleOpen: false, toolGroup: 'video' };
   let project = null;
   let saveTimer = null;
   let uid = 0;
@@ -148,6 +150,7 @@
     if (ref === 'characters') return opts.concat(project.characters.map(c => h('option', { value: c.id, text: c.name || c.id })));
     if (ref === 'locations') return opts.concat(project.locations.map(l => h('option', { value: l.id, text: l.name || l.id })));
     if (ref === 'episodes') return opts.concat(sortedEps().map(e => h('option', { value: e.id, text: epLabel(e) })));
+    if (ref === 'props') return opts.concat(project.props.map(p => h('option', { value: p.id, text: p.name || p.id })));
     return opts;
   }
   // 值不在選項裡（例如 AI 給了怪值）時補一個選項，否則 select 會默默顯示空白、使用者以為資料不見
@@ -198,7 +201,8 @@
     const box = h('div', { class: 'rows' });
     const draw = () => {
       box.textContent = '';
-      obj[f.k].forEach((row, i) => box.append(rowEditor(f, obj, row, i, draw)));
+      // 列裡的每個輸入都要通知外層：分鏡編輯器的提示詞預覽靠這個重算，否則改了道具或服裝預覽還是舊的
+      obj[f.k].forEach((row, i) => box.append(rowEditor(f, obj, row, i, draw, () => { if (onChange) onChange(f.k); })));
       if (!obj[f.k].length) box.append(h('p', { class: 'tip', text: '還沒有，按下面新增。' }));
     };
     const add = h('button', { type: 'button', class: 'btn block', text: '新增' + f.l, onclick: () => {
@@ -239,7 +243,7 @@
     return h('div', { class: 'field preset' }, h('label', { for: id, text: '從服裝範本加入' }), h('div', { class: 'inline' }, sel, add));
   }
 
-  function rowEditor(f, obj, row, i, redraw) {
+  function rowEditor(f, obj, row, i, redraw, changed) {
     const el = h('fieldset', { class: 'row' });
     const label = f.l + ' ' + (i + 1);
     el.append(h('legend', { class: 'small muted', text: label + (row.id ? '（' + row.id + '）' : '') }));
@@ -253,7 +257,7 @@
           const ch = C.find(project.characters, row.c);
           const sel = h('select', { id }, h('option', { value: '', text: '（預設第一套）' }), (ch && ch.outfits || []).map(o => h('option', { value: o.id, text: o.name || o.id })));
           keepValue(sel, row.outfit);
-          sel.addEventListener('change', () => { row.outfit = sel.value; scheduleSave(); });
+          sel.addEventListener('change', () => { row.outfit = sel.value; scheduleSave(); changed(); });
           outfitHolder.append(h('label', { for: id, text: s.l }), sel);
         };
         drawOutfit();
@@ -265,6 +269,7 @@
         row[s.k] = v === null ? '' : v;
         scheduleSave();
         if (s.k === 'c' && outfitHolder) { row.outfit = ''; outfitHolder.redraw(); }
+        changed();
       }, id);
       el.append(h('div', { class: 'field' }, h('label', { for: id, text: s.l }), input));
     }
@@ -272,6 +277,7 @@
       obj[f.k].splice(i, 1);
       scheduleSave();
       redraw();
+      changed();
     } }));
     return el;
   }
@@ -337,7 +343,12 @@
     const drawPreview = () => {
       preview.textContent = '';
       if (coll === 'characters') { preview.append(sheetBlock(item)); return; }
-      if (coll === 'episodes') { const b = inspoBlock(); if (b) preview.append(b); return; }
+      if (coll === 'episodes') {
+        const b = inspoBlock();
+        if (b) preview.append(b);
+        preview.append(h('div', { class: 'btn-row' }, h('button', { type: 'button', class: 'btn', text: '複製這集劇本', onclick: () => copy(C.exportScript(project, item.id), '已複製第' + item.no + '集劇本') })));
+        return;
+      }
       if (coll !== 'shots') return;
       const img = C.imagePrompt(project, item), vid = C.videoPrompt(project, item);
       preview.append(
@@ -346,7 +357,9 @@
         h('div', { class: 'row-head', text: '影片（拿上面的圖做圖生影片）' }), h('div', { class: 'prompt', text: vid }),
         h('div', { class: 'btn-row' },
           h('button', { type: 'button', class: 'btn', text: '複製圖片提示詞', onclick: () => copy(C.imagePrompt(project, item), '已複製圖片提示詞') }),
-          h('button', { type: 'button', class: 'btn', text: '複製影片提示詞', onclick: () => copy(C.videoPrompt(project, item), '已複製影片提示詞') })));
+          h('button', { type: 'button', class: 'btn', text: '複製影片提示詞', onclick: () => copy(C.videoPrompt(project, item), '已複製影片提示詞') })),
+        h('div', { class: 'btn-row' }, toolButton(favTool('image'), '開生圖'), toolButton(favTool('video'), '開影片')),
+        h('p', { class: 'tip', text: '「開生圖」「開影片」用的是「工具」分頁設定的常用工具，會另開分頁；先複製好再過去貼上。' }));
     };
     const onChange = () => {
       if (coll === 'shots' || coll === 'characters') drawPreview();
@@ -541,19 +554,20 @@
   }
 
   const EDITOR_PRIMARY = {
-    characters: ['name', 'role', 'appearance', 'outfits', 'voice', 'refImage'],
+    characters: ['name', 'role', 'appearance', 'outfits', 'voice', 'voiceId', 'refImage'],
     episodes: ['no', 'title', 'hook', 'synopsis', 'cliffhanger', 'seconds'],
-    shots: ['sec', 'loc', 'time', 'size', 'angle', 'move', 'cast', 'action', 'lines', 'status'],
+    shots: ['sec', 'loc', 'time', 'size', 'angle', 'move', 'cast', 'items', 'action', 'lines', 'status'],
   };
   const EDITOR_MORE = {
     characters: '人物設定（年齡、性格、動機、秘密、說話方式）',
     episodes: '衝突、反轉、小說版',
-    shots: '進階（英文描述、場次、音效、轉場、備註）',
+    shots: '進階（英文描述、其他人、文字朝向、場次、音效、轉場、備註）',
   };
 
   function refCount(coll, id) {
     if (coll === 'characters') return project.shots.filter(s => (s.cast || []).some(r => r.c === id) || (s.lines || []).some(l => l.c === id)).length;
     if (coll === 'locations') return project.shots.filter(s => s.loc === id).length;
+    if (coll === 'props') return project.shots.filter(s => (s.items || []).some(it => it.p === id)).length;
     return 0;
   }
 
@@ -567,7 +581,7 @@
     }
     const v = $('#view');
     v.textContent = '';
-    const fn = { plan: renderPlan, setup: renderSetup, episodes: renderEpisodes, shots: renderShots, export: renderExport }[ui.tab];
+    const fn = { plan: renderPlan, setup: renderSetup, episodes: renderEpisodes, shots: renderShots, export: renderExport, tools: renderTools }[ui.tab];
     v.append(fn());
   }
 
@@ -688,7 +702,8 @@
     if (!shots.length) list.append(h('p', { class: 'empty', text: '這集還沒有分鏡。用 AI 助手「拆單集分鏡」最快。' }));
     card.append(list, h('div', { class: 'btn-row' },
       h('button', { type: 'button', class: 'btn primary', text: '新增分鏡', onclick: () => openEditor('shots', C.newItem(project, 'shots', { ep: ep.id }), true) }),
-      h('button', { type: 'button', class: 'btn', text: 'AI 拆分鏡', onclick: () => openAI('shots', ep.id) })));
+      h('button', { type: 'button', class: 'btn', text: 'AI 拆分鏡', onclick: () => openAI('shots', ep.id) }),
+      h('button', { type: 'button', class: 'btn', text: '複製劇本', onclick: () => copy(C.exportScript(project, ep.id), '已複製第' + ep.no + '集劇本') })));
     return card;
   }
 
@@ -710,7 +725,7 @@
           h('span', { class: 'muted', text: s.sec + ' 秒' }),
           status),
         h('div', { class: 'chips' },
-          [loc ? loc.name : null, s.time, s.size, s.angle, s.move].filter(Boolean).map(x => h('span', { class: 'chip', text: x }))),
+          [loc ? loc.name : null, s.time, s.size, s.angle, s.move].concat((s.items || []).map(it => { const pr = C.find(project.props, it.p); return pr ? pr.name : null; })).filter(Boolean).map(x => h('span', { class: 'chip', text: x }))),
         h('p', { class: 'shot-action', text: s.action || '（還沒寫畫面）' }),
         lines.length ? h('ul', { class: 'shot-lines' }, lines.map(l => h('li', null, h('span', { class: 'who', text: C.speakerName(project, l.c) + '：' }), l.text))) : null),
       h('div', { class: 'btn-row' },
@@ -739,6 +754,8 @@
         const e = C.find(project.episodes, srtEp);
         deliver(base + '_第' + e.no + '集.srt', C.exportSRT(project, srtEp), 'application/x-subrip');
       }],
+      ['劇本', '純文字：場次、畫面、對白、音效；沒拆分鏡的集輸出大綱與小說版。', () => deliver(base + epTag + '_劇本.txt', C.exportScript(project, ui.exportEp))],
+      ['複製劇本', '直接複製劇本文字（範圍照上面選的），貼給 AI 或傳給別人看。', () => copy(C.exportScript(project, ui.exportEp), '已複製劇本')],
       ['設定集', 'Markdown，貼給任何 AI 當背景資料。', () => deliver(base + '_設定集.md', C.exportMarkdown(project), 'text/markdown;charset=utf-8')],
       ['複製設定集', '直接複製文字，不存檔。', () => copy(C.exportMarkdown(project), '已複製設定集')],
       ['範本庫', '角色、服裝、場景、道具、畫風、故事範本全集（Markdown），不用 App 時也能複製。', () => deliver('AI短劇範本庫.md', P.libraryMarkdown(), 'text/markdown;charset=utf-8')],
@@ -769,6 +786,61 @@
     list.append(h('button', { type: 'button', class: 'item', onclick: () => file.click() },
       h('span', { class: 'item-title', text: '從備份還原' }), h('span', { class: 'item-sub', text: '會另開一個專案，不會蓋掉現在這個。' })));
     card.append(list, file);
+    return card;
+  }
+
+  /* ---------- 工具 ---------- */
+
+  // 常用工具只存在這支手機（每個人用的工具不同，不跟專案走）；讀不到就用該類第一個
+  function toolPrefs() {
+    try { const v = JSON.parse(lsGet(KEY.tools) || '{}'); return v && typeof v === 'object' ? v : {}; } catch (e) { return {}; }
+  }
+  function favTool(k) {
+    const g = T.group(k);
+    const name = toolPrefs()[k];
+    return g.items.find(t => t.n === name && t.status !== '已關閉') || g.items.find(t => t.status !== '已關閉');
+  }
+
+  // 外部連結一律另開分頁、不帶 referrer：專案資料不會因為點了連結被帶出去
+  function toolLink(t) {
+    return h('a', { class: 'item tool', href: t.u, target: '_blank', rel: 'noopener noreferrer' },
+      h('span', { class: 'item-title' }, t.n,
+        t.cn ? h('span', { class: 'badge cn', text: '中國廠牌' }) : null,
+        t.status && t.status !== '營運中' ? h('span', { class: 'badge', text: t.status }) : null),
+      h('span', { class: 'item-sub', text: t.d }),
+      t.uCN ? h('span', { class: 'item-sub', text: '中國大陸版：' + t.uCN }) : null);
+  }
+  function toolButton(t, verb) {
+    if (!t) return null;
+    return h('a', { class: 'btn', href: t.u, target: '_blank', rel: 'noopener noreferrer', text: verb + ' ' + t.short + (t.cn ? '（中）' : ''), 'aria-label': verb + ' ' + t.n + (t.cn ? '（中國廠牌）' : '') });
+  }
+
+  function renderTools() {
+    const card = h('section', { class: 'card', 'aria-labelledby': 'h-tools' });
+    card.append(h('h2', { id: 'h-tools', text: '工具' }),
+      h('p', { class: 'small muted', text: '點一下另開官方網站。先在 App 複製好指令或提示詞，到那邊貼上。網址查證於 ' + T.CHECKED + '。' }));
+    if (!T.GROUPS.some(g => g.k === ui.toolGroup)) ui.toolGroup = T.GROUPS[0].k;
+    const sel = h('select', { id: 'toolGroup', 'aria-label': '工具類別' }, T.GROUPS.map(g => h('option', { value: g.k, text: g.l + '（' + g.items.length + '）' })));
+    sel.value = ui.toolGroup;
+    sel.addEventListener('change', () => { ui.toolGroup = sel.value; render(); });
+    const g = T.group(ui.toolGroup);
+    card.append(h('div', { class: 'field' }, sel), g.tip ? h('p', { class: 'tip', text: g.tip }) : null,
+      h('div', { class: 'list' }, g.items.map(toolLink)));
+    const prefs = h('details', null, h('summary', { text: '常用工具（分鏡編輯器的「開生圖」「開影片」）' }));
+    for (const [k, l] of [['image', '常用生圖工具'], ['video', '常用影片工具']]) {
+      const id = 'fav-' + k;
+      const s = h('select', { id }, T.group(k).items.filter(t => t.status !== '已關閉').map(t => h('option', { value: t.n, text: t.n + (t.cn ? '（中國廠牌）' : '') })));
+      s.value = favTool(k).n;
+      s.addEventListener('change', () => {
+        const v = toolPrefs();
+        v[k] = s.value;
+        lsSet(KEY.tools, JSON.stringify(v));
+        toast('已設為' + l + '：' + s.value);
+      });
+      prefs.append(h('div', { class: 'field' }, h('label', { for: id, text: l }), s));
+    }
+    card.append(prefs, h('details', null, h('summary', { text: '使用前注意' }),
+      h('ul', { class: 'small' }, T.NOTES.map(x => h('li', { text: x })))));
     return card;
   }
 
@@ -852,13 +924,15 @@
     body.append(
       h('div', { class: 'field' }, h('label', { for: 'aiTask', text: '要 AI 做什麼' }), taskSel),
       epField,
-      h('div', { class: 'step' }, h('span', { class: 'step-n', text: '1' }), h('span', { text: '複製指令，貼到 Claude 或 ChatGPT' })),
+      h('div', { class: 'step' }, h('span', { class: 'step-n', text: '1' }), h('span', { text: '複製指令，按下面的按鈕開一個 AI 貼上' })),
       h('button', { type: 'button', class: 'btn primary block', text: '複製指令', onclick: () => {
         const p = current();
         if (typeof p !== 'string') { toast(p.error, true); return; }
         copy(p, '已複製指令，去 AI 那邊貼上');
       } }),
       info,
+      h('div', { class: 'btn-row tool-row' }, T.group('chat').items.slice(0, 4).map(t => toolButton(t, '開')),
+        h('button', { type: 'button', class: 'btn', text: '更多 AI', onclick: () => { ui.toolGroup = 'chat'; closeSheet(); go('tools'); } })),
       h('details', null, h('summary', { text: '看指令內容' }), peek),
       pasteBox);
     pasteBox.append(

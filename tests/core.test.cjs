@@ -87,7 +87,7 @@ test('merge：用名字指稱角色、場景會自動換成 id；同名角色更
   assert.equal(C.find(p.characters, 'c1').job, '店長');
   const s = p.shots[p.shots.length - 1];
   assert.equal(s.loc, 'l2');
-  assert.deepEqual(s.cast[0], { c: 'c1', outfit: 'o1', expr: '' });
+  assert.deepEqual(s.cast[0], { c: 'c1', outfit: 'o1', expr: '', state: '' });
   assert.equal(s.lines[0].c, 'c1');
 });
 
@@ -185,6 +185,18 @@ test('newItem：新分鏡接在同一集最後並沿用場景', () => {
 test('templates/ 與 core.js 同步', () => {
   const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'gen-templates.cjs'), '--check'], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
+});
+
+test('index.html 載入的每個 .js 都在離線快取清單裡', () => {
+  const root = path.join(__dirname, '..');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  const scripts = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]);
+  assert.ok(scripts.length >= 4);
+  for (const src of scripts) {
+    assert.ok(sw.includes("'" + src + "'"), src + ' 沒加進 sw.js 的 FILES，離線時會缺檔');
+    assert.ok(fs.existsSync(path.join(root, src)), src + ' 不存在');
+  }
 });
 
 test('版本號三處一致（app.js、sw.js、version.json）', () => {
