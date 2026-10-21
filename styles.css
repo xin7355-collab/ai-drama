@@ -130,6 +130,48 @@ textarea.mono, .prompt { font-family: var(--mono); font-size: 13px; }
 a.item, a.btn { color: inherit; text-decoration: none; }
 .badge.cn { background: color-mix(in srgb, var(--warn) 10%, var(--card)); color: var(--warn); }
 .tool-row .btn { flex: 1 1 40%; }
+label.btn { cursor: pointer; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* 隱藏的檔案輸入框拿到鍵盤焦點時，把外框畫在看得到的那顆按鈕上 */
+.visually-hidden:focus-visible + label { outline: 3px solid var(--key); outline-offset: 2px; }
+
+/* 流程：一步一張可展開的卡，「下一步」那張預設打開並加綠框 */
+.flow { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; }
+.flow > li { margin: 0; }
+details.flow-step { border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--paper); padding: 0 12px; margin: 0; }
+details.flow-step[data-state="next"] { border: 2px solid var(--key); background: var(--card); }
+details.flow-step > summary { min-height: 60px; gap: 12px; }
+details.flow-step > summary::before { display: none; }
+.fs-n { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--ink); color: var(--paper); font-size: 15px; font-weight: 800; }
+.flow-step[data-state="done"] .fs-n { background: var(--key); color: #06200F; }
+.fs-text { display: grid; min-width: 0; flex: 1; }
+.fs-detail { font-size: 13px; font-weight: 500; color: var(--muted); }
+.fs-tag { flex: none; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--key-soft); color: var(--key-ink); }
+.flow-step[data-state="todo"] .fs-tag { background: var(--paper); color: var(--muted); border: 1px solid var(--line); }
+.fs-body { padding: 0 0 12px; }
+.fs-body > details { margin-top: 10px; }
+.paste { margin: 4px 0 8px; }
+.paste .btn.block { margin-top: 8px; }
+.hint.warn { background: color-mix(in srgb, var(--warn) 10%, var(--card)); }
+
+/* 卡片縮圖：沒有照片時放名字第一個字，同一頁裡還是分得出誰是誰 */
+.item.with-thumb { display: flex; gap: 12px; align-items: center; }
+.item-text { display: block; min-width: 0; flex: 1; }
+.thumb { flex: none; width: 54px; height: 54px; border-radius: 10px; object-fit: cover; background: var(--card); border: 1px solid var(--line); }
+.thumb.ph { display: inline-grid; place-items: center; font-size: 20px; font-weight: 800; color: var(--muted); }
+.photo-block { margin: 0 0 6px; }
+.photo { display: block; width: 100%; max-height: 360px; object-fit: contain; border-radius: var(--radius-s); background: var(--paper); border: 1px solid var(--line); }
+.refs-block { margin-top: 14px; }
+.refs { display: flex; flex-wrap: wrap; gap: 12px; }
+.ref { display: grid; justify-items: center; gap: 4px; min-width: 64px; min-height: 44px; padding: 0; border: 0; background: none; font-size: 13px; color: inherit; cursor: pointer; }
+.ref .thumb { width: 64px; height: 64px; }
+
+/* 單集頁：上方返回與切換集數同一列 */
+.ep-nav { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; }
+.ep-nav select { flex: 1 1 auto; min-width: 0; }
+.btn.back { flex: none; }
+.ep-brief { margin: 0 0 12px; }
+.ep-brief p { margin: 0 0 6px; }
 /* 外觀選單兩欄排，十一個下拉在 iPhone 上不用滑兩個螢幕 */
 .look-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
 .look-grid .field { margin-bottom: 10px; }
@@ -145,7 +187,7 @@ details ul.small { margin: 4px 0 10px; padding-left: 1.2em; }
 .btn.key { background: var(--key); color: #06200F; border-color: var(--key); }
 .btn.danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, var(--line)); }
 .btn.block { width: 100%; }
-.btn:disabled { opacity: .5; cursor: default; }
+.btn:disabled, .item:disabled { opacity: .5; cursor: default; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
 .btn-row .btn { flex: 1 1 auto; }
 

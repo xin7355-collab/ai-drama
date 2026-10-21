@@ -811,6 +811,17 @@
     return [sheetMedium(st.prefix)].concat(body, [st.suffix, sh.fmt || EN.format[project.meta.format]]).map(x => str(x)).filter(Boolean).join(', ');
   }
 
+  // 場景板、道具板：當參考圖存進卡片，之後每鏡跟定裝照一起上傳，背景和道具才會每鏡一致
+  function platePrompt(project, coll, id) {
+    const st = project.style;
+    const it = find(project[coll], id);
+    if (!it || !str(it.prompt)) return '';
+    const parts = coll === 'locations'
+      ? [sheetMedium(st.prefix), 'empty establishing shot of ' + str(it.prompt), str(it.lighting) || st.lighting, 'no people, no characters, no text', st.palette, st.suffix, EN.format[project.meta.format]]
+      : [sheetMedium(st.prefix), 'prop reference of ' + str(it.prompt), 'centered on a plain light grey background, even soft studio light, no hands, no people, no labels', st.suffix, 'square 1:1 composition'];
+    return parts.map(x => str(x)).filter(Boolean).join(', ');
+  }
+
   function speakerName(project, c) {
     if (c === '旁白') return '旁白';
     const ch = find(project.characters, c);
@@ -1032,6 +1043,83 @@
     return md.join('\n');
   }
 
+  /* ---------- 匯入預覽與製作流程 ---------- */
+
+  const COLL_NAME = { characters: '角色', locations: '場景', props: '道具', episodes: '分集', shots: '分鏡' };
+
+  // 匯入報告轉成人看得懂的一句句話；預覽與真的匯入共用，兩邊說法才會一致
+  function reportParts(project, r) {
+    const parts = [];
+    for (const [k, n] of Object.entries(r.replaced)) { const e = find(project.episodes, k); parts.push('取代' + (e ? '第' + e.no + '集' : k) + '原有 ' + n + ' 鏡'); }
+    for (const [k, n] of Object.entries(r.added)) parts.push('新增' + COLL_NAME[k] + ' ' + n);
+    for (const [k, n] of Object.entries(r.updated)) parts.push('更新' + (COLL_NAME[k] || (k === 'meta' ? '企劃' : '風格')) + (COLL_NAME[k] ? ' ' + n : ''));
+    return parts;
+  }
+
+  // 貼上 AI 回覆時先在複本上試匯入：還沒按匯入，就知道這段是什麼、會改什麼、會不會出錯
+  function preview(project, text) {
+    let data;
+    try { data = extractJSON(text); } catch (e) { return { ok: false, error: e.message }; }
+    const trial = clone(project);
+    let r;
+    try { r = merge(trial, data, { touch: false }); } catch (e) { return { ok: false, error: '這段讀得到 JSON，但不是這個 App 的格式（' + e.message + '）：請用 AI 助手複製的指令重問一次' }; }
+    const before = new Set(lint(project).filter(x => x.level === 'error').map(x => x.where + x.msg));
+    const newErrors = lint(trial).filter(x => x.level === 'error' && !before.has(x.where + x.msg));
+    const warns = r.notes.slice();
+    if (Array.isArray(data.episodes) && data.episodes.length && !trial.characters.length) {
+      warns.push('專案裡還沒有角色：大綱裡的人物不會自動變成角色卡。匯入後到「流程」第 1 步按「AI 生成設定集」，AI 會照大綱補齊角色與場景');
+    }
+    if (Array.isArray(data.shots) && data.shots.length && !Array.isArray(data.episodes)) {
+      const eps = [...new Set(trial.shots.filter(s => data.shots.some(d => String(d.id || '') === s.id)).map(s => s.ep))];
+      if (eps.length > 1) warns.push('這段分鏡分屬 ' + eps.length + ' 集，確認是不是貼錯集');
+    }
+    return { ok: true, data, parts: reportParts(trial, r), warns, newErrors, dest: destOf(data) };
+  }
+
+  // 匯入後「去看結果」要去哪：看資料本身，不看當初選了哪個 AI 工作（使用者常常自己在別的 AI 寫完才貼回來）
+  function destOf(data) {
+    if (Array.isArray(data.shots) && data.shots.length) return { tab: 'eps', ep: str(data.shots[0].ep) };
+    if (Array.isArray(data.episodes) && data.episodes.length) return { tab: 'eps', ep: data.episodes.length === 1 && data.episodes[0].source ? str(data.episodes[0].id) : '' };
+    if (['characters', 'locations', 'props'].some(k => Array.isArray(data[k]) && data[k].length)) return { tab: 'cast' };
+    return { tab: 'flow' };
+  }
+
+  // 「流程」分頁的六個步驟。hasPhoto(coll, id) 由畫面層提供（照片存在 IndexedDB，core 不碰）。
+  // 定裝照是建議步驟：已經開始拆分鏡的人就不再把它標成「下一步」，免得卡住不想做的人
+  function flowSteps(project, hasPhoto) {
+    const has = typeof hasPhoto === 'function' ? hasPhoto : () => false;
+    const m = project.meta;
+    const eps = project.episodes.slice().sort((a, b) => (a.no || 0) - (b.no || 0));
+    const main = project.characters.filter(c => c.role !== '路人');
+    const withPhoto = main.filter(c => has('characters', c.id)).length;
+    const shotsOf = e => epShots(project, e.id);
+    const noShots = eps.filter(e => !shotsOf(e).length);
+    const all = eps.reduce((a, e) => a.concat(shotsOf(e)), []);
+    const done = all.filter(s => s.status === '完成').length;
+    const firstTodo = all.find(s => s.status !== '完成');
+    const finished = eps.find(e => shotsOf(e).length && shotsOf(e).every(s => s.status === '完成'));
+    const want = Number(m.episodes) || 0;
+    const steps = [
+      { k: 'story', title: '故事與角色', done: project.characters.length > 0 && project.locations.length > 0,
+        detail: '角色 ' + project.characters.length + ' 位、場景 ' + project.locations.length + ' 個、道具 ' + project.props.length + ' 個' },
+      { k: 'episodes', title: '分集大綱', done: eps.length > 0 && eps.length >= want,
+        detail: eps.length ? eps.length + '／' + Math.max(want, eps.length) + ' 集' : '還沒有分集（企劃設定 ' + (want || 0) + ' 集）' },
+      { k: 'photos', title: '角色定裝照', optional: true, done: main.length > 0 && withPhoto === main.length,
+        detail: main.length ? withPhoto + '／' + main.length + ' 位角色有定裝照' : '先建立角色' },
+      { k: 'shots', title: '拆分鏡', done: eps.length > 0 && !noShots.length, ep: noShots.length ? noShots[0].id : '',
+        detail: eps.length ? '已拆 ' + (eps.length - noShots.length) + '／' + eps.length + ' 集' + (noShots.length ? '，下一集：第' + noShots[0].no + '集' : '') : '先寫分集大綱' },
+      { k: 'make', title: '生成畫面與影片', done: all.length > 0 && done === all.length, ep: firstTodo ? firstTodo.ep : '', shot: firstTodo ? firstTodo.id : '',
+        detail: all.length ? '完成 ' + done + '／' + all.length + ' 鏡' : '先拆分鏡' },
+      { k: 'finish', title: '配音、字幕、剪輯', done: false, ep: finished ? finished.id : (eps.find(e => shotsOf(e).length) || {}).id || '',
+        detail: finished ? '第' + finished.no + '集的鏡頭都完成了，可以配音與剪輯' : '鏡頭做完後，下載字幕與提示詞包去剪輯' },
+    ];
+    const started = eps.length - noShots.length > 0;
+    let next = steps.findIndex(s => !s.done && !(s.optional && started));
+    if (next < 0) next = steps.length - 1;
+    steps.forEach((s, i) => { s.state = s.done ? 'done' : i === next ? 'next' : 'todo'; });
+    return steps;
+  }
+
   /* ---------- 給 AI 的指令 ---------- */
 
   function compact(v) {
@@ -1052,7 +1140,7 @@
     if (task === 'bible') {
       c.characters = project.characters; c.locations = project.locations; c.props = project.props;
       c.episodes = project.episodes.map(e => pick(e, ['id', 'no', 'title', 'synopsis']));
-    } else if (task === 'episodes') {
+    } else if (task === 'episodes' || task === 'outline') {
       c.style = pick(project.style, ['look', 'era']);
       c.characters = project.characters.map(x => pick(x, ['id', 'name', 'role', 'job', 'personality', 'desire', 'fear', 'secret', 'arc']));
       c.locations = project.locations.map(x => pick(x, ['id', 'name', 'desc']));
@@ -1121,13 +1209,15 @@
     polish: { _mode: 'patch', shots: [{ id: 'e1-01', lines: [{ c: 'c1', text: '……我的字？', emo: '低聲' }] }] },
   };
 
+  // 名稱前的數字對應「流程」分頁的步驟，使用者才知道現在做到哪一步（第 3 步定裝照不用 AI 指令）
   const TASKS = {
-    bible: { label: '生成設定集（企劃、風格、角色、場景、道具）', needEp: false, json: true },
-    episodes: { label: '寫分集大綱', needEp: false, json: true },
-    novel: { label: '寫單集小說版', needEp: true, json: true },
-    shots: { label: '拆單集分鏡', needEp: true, json: true },
-    polish: { label: '對白去 AI 味', needEp: true, json: true },
-    review: { label: '審稿（連戲、節奏、生成風險）', needEp: true, json: false },
+    bible: { label: '1. 生成設定集（企劃、風格、角色、場景、道具）', needEp: false, json: true },
+    episodes: { label: '2. 寫分集大綱', needEp: false, json: true },
+    outline: { label: '2. 審分集大綱（前後矛盾、節奏、懸念）', needEp: false, json: true, partial: true },
+    shots: { label: '4. 拆單集分鏡', needEp: true, json: true },
+    review: { label: '4. 審這集分鏡（連戲、節奏、穿幫）', needEp: true, json: false },
+    polish: { label: '4. 對白去 AI 味', needEp: true, json: true },
+    novel: { label: '（可選）寫單集小說版', needEp: true, json: true },
   };
 
   function aiPrompt(task, project, epId) {
@@ -1150,6 +1240,7 @@
         '- 場景 prompt（英文）只寫空間、陳設、材質、氛圍，不要放人物。',
         '- style 依題材設定畫風、色調、光線、提示詞開頭與結尾、負面提示詞。',
         '- 已有的角色、場景、道具保留原 id 修改；新增的用新 id（角色 c1、c2…，場景 l1…，道具 p1…，服裝 o1、o2…）。',
+        ...(project.episodes.length ? ['- 專案裡已經有 ' + project.episodes.length + ' 集分集大綱（episodes）：大綱裡出現的人物都要建成角色、用到的地點都要建成場景、關鍵物件建成道具，名字跟大綱一致。'] : []),
         '',
         '【欄位規則】',
         'meta：\n' + fieldRules('meta'),
@@ -1220,6 +1311,22 @@
         '',
         ex('polish'),
       ].join('\n');
+    } else if (task === 'outline') {
+      body = [
+        '【任務】審這部劇全部 ' + project.episodes.length + ' 集的分集大綱。先用條列寫問題，每點標集數並給具體改法：',
+        '1. 前後矛盾：設定、能力、誰知道什麼、時間線（例如前面有肢體接觸，後面卻說他不存在）',
+        '2. 每集是否只講一件事、有一個衝突和一個反轉；hook 能不能用一個畫面拍出來',
+        '3. 每集的 cliffhanger 有沒有接到下一集的 hook',
+        '4. 角色的動機、秘密、伏筆有沒有在前面埋好，結局有沒有回收',
+        '5. 節奏：哪幾集重複、哪幾集可以合併或刪掉',
+        '6. 製作成本：場景、角色、群戲會不會太多，AI 生成會不會很難一致',
+        '條列寫完後，把需要修改的集輸出成一個 JSON 物件放在最後（只放要改的集，保留原 id 與 no，沒有要改就不要輸出 JSON）。',
+        '',
+        '【欄位規則】episodes（陣列）：\n' + fieldRules('episodes').split('\n').filter(l => !l.startsWith('- source')).join('\n'),
+        '',
+        ex('episodes'),
+      ].join('\n');
+      return head + '\n' + body + '\n\n' + WRITING + '\n\n【輸出規則】條列在前、JSON 在最後；JSON 欄位名稱照上面的規則，不要自創欄位。';
     } else if (task === 'review') {
       return head + [
         '【任務】審第 ' + ep.no + ' 集的分鏡，用條列回覆，不要 JSON。每點都標鏡號，並給具體改法：',
@@ -1272,7 +1379,7 @@
   return {
     SCHEMA, SPEC, OPT, EN, TASKS, COLLECTIONS, CHARS_PER_SEC,
     newProject, newItem, normalize, merge, extractJSON, lint,
-    imagePrompt, videoPrompt, sheetPrompt, SHEETS, aiPrompt, exportSRT, exportCSV, exportPromptPack, exportMarkdown, exportScript,
+    imagePrompt, videoPrompt, sheetPrompt, platePrompt, SHEETS, aiPrompt, preview, reportParts, flowSteps, destOf, exportSRT, exportCSV, exportPromptPack, exportMarkdown, exportScript,
     epShots, epSeconds, speakerName, demoProject, clone, find, clock, EXAMPLES,
   };
 });

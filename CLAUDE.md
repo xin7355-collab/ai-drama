@@ -68,7 +68,8 @@
 - 用途：AI 劇本工坊——把故事拆成 AI 短劇的設定集、分集、分鏡，組出圖片／影片／配音提示詞與字幕。
   AI 用「複製指令→貼到 Claude/ChatGPT→貼回匯入」，不接 API。設計理由見 `docs/設計說明.md`。
 - 主要檔案：`core.js`（資料、匯入、檢查、提示詞、匯出，不碰 DOM）、`presets.js`（範本庫）、`tools.js`（AI 工具網址，
-  新增網址前要查證是官方網域）、`app.js`（介面）、`index.html`、`styles.css`、`sw.js`。欄位只定義在 `core.js` 的 `SPEC`，表單／AI 指令／模板都由它產生。
+  新增網址前要查證是官方網域）、`photos.js`（卡片照片，IndexedDB）、`app.js`（介面：流程、角色、分集、工具四個分頁）、
+  `index.html`、`styles.css`、`sw.js`。欄位只定義在 `core.js` 的 `SPEC`，表單／AI 指令／模板都由它產生。
 - 需要的 Secrets：無。
 - 部署在哪：GitHub Pages，main 分支根目錄（`.nojekyll`）。
 - 特別注意：
