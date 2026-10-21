@@ -24,7 +24,7 @@ jobs:
       - name: 單元測試與模板同步檢查
         run: npm run selftest
       - name: 手機尺寸端對端測試
-        run: npx playwright test
+        run: npx playwright test --fail-on-flaky-tests
       - name: 上傳測試報告
         if: always()
         uses: actions/upload-artifact@v4
