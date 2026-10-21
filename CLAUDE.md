@@ -64,9 +64,15 @@
   - 預設 shell 是 `bash -e -o pipefail`：`tee` 到的資料夾要先 `mkdir -p`。
 - 大檔暫存用 GitHub Release 附件（單檔上限 2 GiB、不進 git 歷史），repo 只放小標記檔觸發工作流。
 
-## 7. 本專案資訊（每個專案自己填）
-- 用途：
-- 主要檔案：
-- 需要的 Secrets：
-- 部署在哪：
+## 7. 本專案資訊
+- 用途：AI 劇本工坊——把故事拆成 AI 短劇的設定集、分集、分鏡，組出圖片／影片／配音提示詞與字幕。
+  AI 用「複製指令→貼到 Claude/ChatGPT→貼回匯入」，不接 API。設計理由見 `docs/設計說明.md`。
+- 主要檔案：`core.js`（資料、匯入、檢查、提示詞、匯出，不碰 DOM）、`app.js`（介面）、`index.html`、
+  `styles.css`、`sw.js`。欄位只定義在 `core.js` 的 `SPEC`，表單／AI 指令／模板都由它產生。
+- 需要的 Secrets：無。
+- 部署在哪：GitHub Pages，main 分支根目錄（`.nojekyll`）。
 - 特別注意：
+  - 改版時 `app.js` 的 `APP_VER`、`sw.js` 的 `VER`、`version.json` 三處一起改（有測試擋）。
+  - 改了 `SPEC` 或示範專案要跑 `npm run templates` 重產 `templates/`（有測試擋）。
+  - 使用者或 AI 給的文字一律用 textContent，不用 innerHTML；CSP 不允許 inline script。
+  - 測試：`npm run selftest`、`npx playwright test`（CI 另跑 WebKit）。

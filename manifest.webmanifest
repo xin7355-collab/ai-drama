@@ -1,0 +1,17 @@
+{
+  "name": "AI 劇本工坊",
+  "short_name": "劇本工坊",
+  "description": "把故事拆成 AI 短劇的角色、分集、分鏡與提示詞",
+  "lang": "zh-Hant-TW",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#E9ECE6",
+  "theme_color": "#E9ECE6",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
