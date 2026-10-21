@@ -67,13 +67,14 @@
 ## 7. 本專案資訊
 - 用途：AI 劇本工坊——把故事拆成 AI 短劇的設定集、分集、分鏡，組出圖片／影片／配音提示詞與字幕。
   AI 用「複製指令→貼到 Claude/ChatGPT→貼回匯入」，不接 API。設計理由見 `docs/設計說明.md`。
-- 主要檔案：`core.js`（資料、匯入、檢查、提示詞、匯出，不碰 DOM）、`app.js`（介面）、`index.html`、
-  `styles.css`、`sw.js`。欄位只定義在 `core.js` 的 `SPEC`，表單／AI 指令／模板都由它產生。
+- 主要檔案：`core.js`（資料、匯入、檢查、提示詞、匯出，不碰 DOM）、`presets.js`（範本庫，不碰 DOM）、
+  `app.js`（介面）、`index.html`、`styles.css`、`sw.js`。欄位只定義在 `core.js` 的 `SPEC`，表單／AI 指令／模板都由它產生。
 - 需要的 Secrets：無。
 - 部署在哪：GitHub Pages，main 分支根目錄（`.nojekyll`）。
 - 特別注意：
   - 改版時 `app.js` 的 `APP_VER`、`sw.js` 的 `VER`、`version.json` 三處一起改（有測試擋）。
-  - 改了 `SPEC` 或示範專案要跑 `npm run templates` 重產 `templates/`（有測試擋）。
+  - 改了 `SPEC`、示範專案或 `presets.js` 要跑 `npm run templates` 重產 `templates/`（有測試擋）。
+  - 新增 `.js` 檔要同時加進 `index.html` 與 `sw.js` 的 `FILES`，否則離線時會缺檔。
   - 使用者或 AI 給的文字一律用 textContent，不用 innerHTML；CSP 不允許 inline script。
   - 測試：`npm run selftest`、`npx playwright test`（CI 另跑 WebKit，重試才過也算失敗）。
   - 從 Claude 工作階段 push 不會自動觸發「測試」工作流，推完要手動觸發：

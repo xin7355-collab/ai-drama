@@ -166,3 +166,124 @@ test('貼上的內容不會被當成程式執行', async ({ page }) => {
   expect(await page.evaluate(() => window.__xss)).toBeUndefined();
   expect(await page.locator('#view img').count()).toBe(0);
 });
+
+const noOverflow = async (page, where) => {
+  const overflow = await page.evaluate(() => Math.max(document.documentElement.scrollWidth - window.innerWidth, document.querySelector('#sheet').scrollWidth - document.querySelector('#sheet').clientWidth));
+  expect(overflow, where + ' 不該有橫向捲動').toBeLessThanOrEqual(0);
+};
+
+test('範本：從角色範本加入、套服裝範本、複製定裝照提示詞', async ({ page, browserName }) => {
+  await page.goto('/');
+  await tab(page, '設定').click();
+  await page.getByRole('button', { name: '從範本加入' }).click();
+  const dlg = page.getByRole('dialog', { name: '角色範本' });
+  await dlg.getByLabel('類別').selectOption({ label: '古裝宮廷（6）' });
+  await noOverflow(page, '角色範本面板');
+  await dlg.getByRole('button', { name: /冷面王爺｜蕭景珩/ }).click();
+  await expect(page.locator('#toast')).toContainText('已加入角色：蕭景珩');
+  const ed = page.getByRole('dialog', { name: '蕭景珩' });
+  await expect(ed.getByLabel('外觀錨點（英文）')).toHaveValue(/scar along the right side of his neck/);
+  await expect(ed.locator('fieldset.row')).toHaveCount(2);
+  await ed.getByLabel('從服裝範本加入').selectOption('夜行衣');
+  await ed.getByRole('button', { name: '加入', exact: true }).click();
+  await expect(ed.locator('fieldset.row')).toHaveCount(3);
+  await ed.getByLabel('哪一種').selectOption('turnaround');
+  await ed.getByLabel('哪一套服裝').selectOption({ label: '夜行衣' });
+  await expect(ed.locator('.prompt').last()).toContainText('black close-fitting night-raid outfit');
+  await ed.getByRole('button', { name: '複製定裝照提示詞' }).click();
+  await expect(page.locator('#toast')).toContainText('已複製三視圖');
+  if (browserName === 'chromium') {
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toContain('front view, side profile, back view');
+    expect(clip).toContain('night-raid outfit');
+  }
+  await noOverflow(page, '角色編輯器');
+  await ed.getByRole('button', { name: '完成' }).click();
+  await expect(page.locator('#setupColl')).toContainText('角色（3）');
+  await page.reload();
+  await tab(page, '設定').click();
+  await page.getByRole('button', { name: /蕭景珩/ }).click();
+  await expect(page.getByRole('dialog').locator('fieldset.row')).toHaveCount(3);
+});
+
+test('範本：用選單產生外觀錨點，會先確認才取代', async ({ page }) => {
+  await page.goto('/');
+  await tab(page, '設定').click();
+  await page.getByRole('button', { name: /林夏/ }).click();
+  const ed = page.getByRole('dialog', { name: '林夏' });
+  const look = ed.locator('details.look');
+  await look.locator('summary').click();
+  await look.getByLabel('性別').selectOption('女');
+  await look.getByLabel('年齡').selectOption('25 歲');
+  await look.getByLabel('族裔外貌').selectOption('東亞');
+  await look.getByLabel('髮長').selectOption('及肩');
+  await look.getByLabel('髮色').selectOption('黑');
+  await look.getByLabel('辨識特徵 1').selectOption('雀斑');
+  await expect(look.locator('.prompt')).toHaveText('a 25-year-old East Asian woman, shoulder-length black hair, light freckles across the nose');
+  page.once('dialog', d => d.dismiss());
+  await look.getByRole('button', { name: '填入外觀錨點' }).click();
+  await expect(ed.getByLabel('外觀錨點（英文）')).toHaveValue(/mole under the right eye/);
+  page.once('dialog', d => d.accept());
+  await look.getByRole('button', { name: '填入外觀錨點' }).click();
+  await expect(ed.getByLabel('外觀錨點（英文）')).toHaveValue('a 25-year-old East Asian woman, shoulder-length black hair, light freckles across the nose');
+  await expect(ed.locator('.prompt').last()).toContainText('light freckles');
+  await noOverflow(page, '外觀選單');
+});
+
+test('範本：新專案整套套用故事範本，再換畫風', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /^專案/ }).click();
+  await page.getByRole('button', { name: '新專案' }).click();
+  await page.getByLabel('故事範本').selectOption('古裝');
+  await expect(page.getByText('侯府庶女在生母死後裝傻求生')).toBeVisible();
+  await page.getByRole('button', { name: '整套套用' }).click();
+  await expect(page.locator('#toast')).toContainText('角色 5 位、場景 5 個');
+  await expect(page.locator('#projTitle')).toHaveText('庶女謀');
+  await expect(page.getByLabel('類型', { exact: true })).toHaveValue('古裝');
+  await page.getByText('風格與提示詞設定').click();
+  await expect(page.getByLabel('畫風', { exact: true })).toHaveValue('古裝電影感');
+  await page.getByLabel('套用畫風範本').selectOption('國漫厚塗');
+  page.once('dialog', d => d.accept());
+  await page.getByRole('button', { name: '套用', exact: true }).click();
+  await expect(page.getByLabel('畫風', { exact: true })).toHaveValue('國漫厚塗');
+  await expect(page.getByLabel('負面提示詞（英文）')).toHaveValue(/photorealistic/);
+  await noOverflow(page, '企劃分頁');
+  await tab(page, '設定').click();
+  await expect(page.locator('#setupColl')).toContainText('角色（5）');
+  await expect(page.locator('.badge')).toHaveCount(0);
+  // 再套一次同一個範本：企劃內容相同不用確認，角色不會重複加
+  await tab(page, '企劃').click();
+  await page.getByText('從故事範本開始').click();
+  await page.getByLabel('故事範本').selectOption('古裝');
+  await page.getByRole('button', { name: '整套套用' }).click();
+  await expect(page.locator('#toast')).toContainText('角色 0 位、場景 0 個');
+});
+
+test('範本：分集編輯器有類型的鉤子靈感；場景與道具範本；匯出範本庫', async ({ page }) => {
+  await page.addInitScript(() => { Object.defineProperty(navigator, 'canShare', { value: undefined }); });
+  await page.goto('/');
+  await tab(page, '分集').click();
+  await page.getByRole('button', { name: /第1集/ }).click();
+  await page.getByText('鉤子與懸念靈感（懸疑）').click();
+  await expect(page.getByRole('dialog').getByText('醒來時手上握著一把不是自己的鑰匙')).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
+  await tab(page, '設定').click();
+  await page.locator('#setupColl').selectOption('locations');
+  await page.getByRole('button', { name: '從範本加入' }).click();
+  await page.getByRole('dialog').getByLabel('類別').selectOption({ label: '古裝（8）' });
+  await page.getByRole('button', { name: /皇宮大殿/ }).click();
+  await expect(page.getByRole('dialog').getByLabel('空間描述（英文）')).toHaveValue(/golden dragon throne/);
+  await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
+  await page.locator('#setupColl').selectOption('props');
+  await page.getByRole('button', { name: '從範本加入' }).click();
+  await page.getByRole('dialog').getByLabel('類別').selectOption({ label: '古裝（7）' });
+  await page.getByRole('button', { name: /玉珮/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
+  await expect(page.locator('#setupColl')).toContainText('道具（2）');
+  await tab(page, '匯出').click();
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /^範本庫/ }).click()]);
+  // 不比對檔名：Linux 版 Chromium 的 <a download> 遇到中文檔名會改叫 download（所有匯出都一樣）；iPhone 走分享面板不受影響
+  const md = (await import('node:fs')).readFileSync(await dl.path(), 'utf8');
+  expect(md).toContain('# AI 短劇範本庫');
+  expect(md).toContain('冷面王爺');
+});

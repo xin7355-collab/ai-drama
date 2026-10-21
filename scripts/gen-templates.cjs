@@ -1,10 +1,11 @@
-// 從 core.js 的欄位定義產生 templates/ 下的模板與範例，讓模板永遠和 App 一致。
+// 從 core.js 的欄位定義與 presets.js 的範本庫產生 templates/ 下的模板與範例，讓模板永遠和 App 一致。
 // 用法：node scripts/gen-templates.cjs          → 寫檔
 //       node scripts/gen-templates.cjs --check  → 只比對，不一致就 exit 1（給測試與 CI 用）
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const C = require('../core.js');
+const P = require('../presets.js');
 
 const dir = path.join(__dirname, '..', 'templates');
 const demo = C.demoProject();
@@ -13,6 +14,7 @@ const files = {
   '範例-午夜收據-設定集.md': C.exportMarkdown(demo),
   '範例-午夜收據-分鏡提示詞包.txt': C.exportPromptPack(demo),
   '範例-午夜收據-第1集.srt': C.exportSRT(demo, 'e1'),
+  '範本庫.md': P.libraryMarkdown(),
 };
 
 const check = process.argv.includes('--check');

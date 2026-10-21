@@ -1,7 +1,7 @@
 // 離線快取：連得上網路就拿最新版（避免手機卡在舊版），斷線才用快取。
-const VER = '1.0.0';
+const VER = '1.1.0';
 const CACHE = 'aidrama-' + VER;
-const FILES = ['./', 'index.html', 'styles.css', 'core.js', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const FILES = ['./', 'index.html', 'styles.css', 'core.js', 'presets.js', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

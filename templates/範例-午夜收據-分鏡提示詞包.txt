@@ -1,42 +1,52 @@
 《午夜收據（示範）》分鏡提示詞包
 負面提示詞（每鏡共用）：text, subtitles, watermark, logo, extra fingers, deformed hands, blurry face, duplicate person
 
+══ 定裝照（先做，之後每一鏡都上傳當參考圖）
+
+▌林夏｜聲線：偏低、語速平穩
+［臉部］photorealistic, head-and-shoulders face reference of one person: a 26-year-old East Asian woman, shoulder-length straight black hair, small silver hair clip on the left side, slim build, mole under the right eye, wearing green and white convenience store vest over a charcoal hoodie, facing the camera straight on, neutral expression, full hairline and jawline visible, even soft frontal studio light, plain light grey background, no text, highly detailed, sharp focus, natural skin texture, square 1:1 composition
+［三視圖・店員制服］photorealistic, character turnaround sheet of one person: a 26-year-old East Asian woman, shoulder-length straight black hair, small silver hair clip on the left side, slim build, mole under the right eye, wearing green and white convenience store vest over a charcoal hoodie, three full-body views side by side at equal height: front view, side profile, back view, neutral standing pose, neutral expression, even soft frontal studio light, plain light grey background, same face, hairstyle, proportions and outfit in every view, no view labels, no arrows, no annotations, no text, highly detailed, sharp focus, natural skin texture, wide 16:9 sheet layout
+
+▌黑衣客｜聲線：低沉、每句停頓很久
+［臉部］photorealistic, head-and-shoulders face reference of one person: a tall East Asian man in his 40s, neatly combed hair with gray streaks, thin scar across the left eyebrow, pale face, wearing long black wool coat, black leather gloves, facing the camera straight on, neutral expression, full hairline and jawline visible, even soft frontal studio light, plain light grey background, no text, highly detailed, sharp focus, natural skin texture, square 1:1 composition
+［三視圖・長大衣］photorealistic, character turnaround sheet of one person: a tall East Asian man in his 40s, neatly combed hair with gray streaks, thin scar across the left eyebrow, pale face, wearing long black wool coat, black leather gloves, three full-body views side by side at equal height: front view, side profile, back view, neutral standing pose, neutral expression, even soft frontal studio light, plain light grey background, same face, hairstyle, proportions and outfit in every view, no view labels, no arrows, no annotations, no text, highly detailed, sharp focus, natural skin texture, wide 16:9 sheet layout
+
 ══ 第1集 凌晨三點的客人
 
 ▌e1-01　0:00–0:03（3 秒）
 畫面：收據特寫，林夏的手指停在簽名上
 ［圖片］cinematic film still, photorealistic, 35mm lens, extreme close-up, high angle, extreme close-up of a faded receipt on a store counter, a young woman's finger frozen on a handwritten signature, a 26-year-old East Asian woman, shoulder-length straight black hair, small silver hair clip on the left side, slim build, mole under the right eye, wearing green and white convenience store vest over a charcoal hoodie, setting: small 24-hour convenience store interior, snack shelves, glass sliding door, counter with cash register, security camera in the corner, late night, dim, cold fluorescent light, cold teal with sodium orange accents, highly detailed, sharp focus, natural skin texture, vertical 9:16 composition
-［影片］the finger trembles as the camera slowly pushes in on the signature, slow push-in, extreme close-up, about 3 seconds
+［影片］the finger trembles as the camera slowly pushes in on the signature, slow push-in, extreme close-up, the 26-year-old East Asian woman says in Taiwanese Mandarin (低聲): "這是我的字。", no subtitles or on-screen text, about 3 seconds
 ［配音］林夏（低聲）：這是我的字。｜聲線：偏低、語速平穩
 ［音效］冰箱壓縮機低鳴
 
 ▌e1-02　0:03–0:08（5 秒）
 畫面：黑衣客隔著櫃檯微笑，把零錢一枚枚疊好
 ［圖片］cinematic film still, photorealistic, 35mm lens, medium shot, eye-level angle, medium shot across a convenience store counter, a pale man in a black coat smiles and stacks coins neatly while the young cashier stares at him, a 26-year-old East Asian woman, shoulder-length straight black hair, small silver hair clip on the left side, slim build, mole under the right eye, wearing green and white convenience store vest over a charcoal hoodie; a tall East Asian man in his 40s, neatly combed hair with gray streaks, thin scar across the left eyebrow, pale face, wearing long black wool coat, black leather gloves, setting: small 24-hour convenience store interior, snack shelves, glass sliding door, counter with cash register, security camera in the corner, late night, dim, cold fluorescent light, cold teal with sodium orange accents, highly detailed, sharp focus, natural skin texture, vertical 9:16 composition
-［影片］the man slowly stacks the last coin, the cashier does not move, static camera, medium shot, about 5 seconds
+［影片］the man slowly stacks the last coin, the cashier does not move, static camera, medium shot, the tall East Asian man in his 40s says in Taiwanese Mandarin (溫和): "妳還是習慣簽在右下角。", characters who are not speaking keep their lips closed, no subtitles or on-screen text, about 5 seconds
 ［配音］黑衣客（溫和）：妳還是習慣簽在右下角。｜聲線：低沉、每句停頓很久
 
 ▌e1-03　0:08–0:12（4 秒）
 畫面：林夏抬眼，聲音壓得很低
 ［圖片］cinematic film still, photorealistic, 35mm lens, medium close-up, eye-level angle, medium close-up of the young cashier lifting her eyes, jaw tight, fluorescent light flickering above, a 26-year-old East Asian woman, shoulder-length straight black hair, small silver hair clip on the left side, slim build, mole under the right eye, wearing green and white convenience store vest over a charcoal hoodie, setting: small 24-hour convenience store interior, snack shelves, glass sliding door, counter with cash register, security camera in the corner, late night, dim, cold fluorescent light, cold teal with sodium orange accents, highly detailed, sharp focus, natural skin texture, vertical 9:16 composition
-［影片］she raises her eyes slowly, the light flickers once, slow push-in, medium close-up, about 4 seconds
+［影片］she raises her eyes slowly, the light flickers once, slow push-in, medium close-up, the 26-year-old East Asian woman says in Taiwanese Mandarin (壓低): "你是誰？", no subtitles or on-screen text, about 4 seconds
 ［配音］林夏（壓低）：你是誰？｜聲線：偏低、語速平穩
 
 ▌e1-04　0:12–0:17（5 秒）
 畫面：黑衣客湊近，叫出她的小名
 ［圖片］cinematic film still, photorealistic, 35mm lens, medium shot, over-the-shoulder shot, over-the-shoulder shot from behind the cashier, the man in the black coat leans closer across the counter, a tall East Asian man in his 40s, neatly combed hair with gray streaks, thin scar across the left eyebrow, pale face, wearing long black wool coat, black leather gloves, setting: small 24-hour convenience store interior, snack shelves, glass sliding door, counter with cash register, security camera in the corner, late night, dim, cold fluorescent light, cold teal with sodium orange accents, highly detailed, sharp focus, natural skin texture, vertical 9:16 composition
-［影片］he leans in slowly and whispers, static camera, medium shot, about 5 seconds
+［影片］he leans in slowly and whispers, static camera, medium shot, the tall East Asian man in his 40s says in Taiwanese Mandarin (耳語): "小夏，妳又忘記了。", no subtitles or on-screen text, about 5 seconds
 ［配音］黑衣客（耳語）：小夏，妳又忘記了。｜聲線：低沉、每句停頓很久
 
 ▌e1-05　0:17–0:22（5 秒）
 畫面：林夏衝出自動門，騎樓空無一人，只有雨
 ［圖片］cinematic film still, photorealistic, 35mm lens, wide shot, eye-level angle, wide shot of the young woman bursting out of a glass door onto an empty rainy arcade sidewalk, neon reflections on wet tiles, a 26-year-old East Asian woman, shoulder-length straight black hair, small silver hair clip on the left side, slim build, mole under the right eye, wearing green and white convenience store vest over a charcoal hoodie, setting: rainy arcade sidewalk outside a convenience store at night, wet tiles reflecting neon signs, parked scooters, late night, dim, neon reflections, wet surfaces, cold teal with sodium orange accents, highly detailed, sharp focus, natural skin texture, vertical 9:16 composition
-［影片］the camera follows her as she runs out and stops, looking left and right, follow shot, wide shot, about 5 seconds
+［影片］the camera follows her as she runs out and stops, looking left and right, follow shot, wide shot, no subtitles or on-screen text, about 5 seconds
 ［音效］自動門提示音、雨聲
 
 ▌e1-06　0:22–0:28（6 秒）
 畫面：監視器畫面：整晚店裡只有林夏一個人
 ［圖片］cinematic film still, photorealistic, 35mm lens, close-up, POV shot, close-up of a small CCTV monitor showing grainy footage of the store, only one cashier visible, the counter empty in front of her, setting: small 24-hour convenience store interior, snack shelves, glass sliding door, counter with cash register, security camera in the corner, late night, dim, cold fluorescent light, cold teal with sodium orange accents, highly detailed, sharp focus, natural skin texture, vertical 9:16 composition
-［影片］the footage fast-forwards, the store stays empty except for her, slow push-in, close-up, about 6 seconds
+［影片］the footage fast-forwards, the store stays empty except for her, slow push-in, close-up, a voice-over narrator (off screen) says in Taiwanese Mandarin (平淡): "那天晚上，沒有人來過。", no one on screen speaks, lips stay closed, no subtitles or on-screen text, about 6 seconds
 ［配音］旁白（平淡）：那天晚上，沒有人來過。
 ［音效］監視器雜訊

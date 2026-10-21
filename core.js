@@ -26,6 +26,8 @@
     status: ['待生成', '圖OK', '影片OK', '配音OK', '完成', '重做'],
     trans: ['直切', '淡入', '淡出', '溶接', '閃白', '黑場'],
     videoLang: ['英文', '中文'],
+    ref: ['不用', '定裝照'],
+    videoLines: ['帶對白', '不帶（另外配音）'],
   };
 
   const EN = {
@@ -61,6 +63,8 @@
       { k: 'negative', l: '負面提示詞（英文）', type: 'area', def: 'text, subtitles, watermark, logo, extra fingers, deformed hands, blurry face, duplicate person' },
       { k: 'videoLang', l: '影片提示詞語言', opts: OPT.videoLang, def: '英文', tip: '看你用的影片工具吃哪種' },
       { k: 'maxShotSec', l: '單鏡上限秒數', type: 'num', def: 10, min: 2, max: 30, tip: '依影片工具單段上限填' },
+      { k: 'ref', l: '生圖參考圖', opts: OPT.ref, def: '不用', tip: '生圖工具可以上傳定裝照時選「定裝照」，圖片提示詞會加上「照參考圖保留長相與服裝」' },
+      { k: 'videoLines', l: '影片提示詞的對白', opts: OPT.videoLines, def: '帶對白', tip: '會自己出聲的影片工具選「帶對白」；配音另外做就選「不帶」，只留嘴型提示' },
       { k: 'music', l: '配樂風格' },
       { k: 'subtitle', l: '字幕樣式', def: '白字細黑邊，畫面下方三分之一' },
     ] },
@@ -516,10 +520,14 @@
     return [ch.appearance, fit && fit.prompt ? 'wearing ' + fit.prompt : ''].filter(Boolean).join(', ');
   }
 
+  // 有上傳定裝照時放最前面：模型先讀到「照參考圖」，才不會依文字描述重畫一張臉（咒語盒「保留長相」模式的作法）
+  const REF_LOCK = 'Use the attached character reference images: keep each character\'s face, hairstyle, skin tone and outfit exactly as in the references, change only the pose, framing, setting and lighting described here';
+
   function imagePrompt(project, shot) {
     const st = project.style;
     const loc = find(project.locations, shot.loc);
     const parts = [
+      st.ref === '定裝照' && (shot.cast || []).length ? REF_LOCK : '',
       st.prefix,
       EN.size[shot.size], EN.angle[shot.angle],
       shot.visualEn || shot.action,
@@ -534,6 +542,40 @@
     return parts.map(x => str(x)).filter(Boolean).join(', ');
   }
 
+  // 影片模型不認得人名，用外觀錨點的第一段（a 26-year-old East Asian woman → the 26-year-old …）指稱說話的人
+  function whoEn(project, c) {
+    const ch = find(project.characters, c);
+    const first = ch && String(ch.appearance || '').split(',')[0].trim();
+    return first ? first.replace(/^(a|an|the)\s+/i, 'the ') : 'the character';
+  }
+
+  // 對白逐句掛上說話的人；同框沒說話的人要寫明嘴唇閉合，否則模型常讓每個人一起動嘴。
+  // 字幕一律要求不要：影片工具自己燒進畫面的字幕又醜又無法改，字幕交給 .srt。
+  function videoLines(project, shot, zh) {
+    const lines = (shot.lines || []).filter(l => str(l.text));
+    const speakers = new Set(lines.map(l => l.c));
+    const silent = (shot.cast || []).some(r => !speakers.has(r.c));
+    const withText = project.style.videoLines !== '不帶（另外配音）';
+    const out = [];
+    if (zh) {
+      if (lines.length && withText) out.push('對白：' + lines.map(l => (l.c === '旁白' ? '旁白（畫外音）' : speakerName(project, l.c)) + (l.emo ? '（' + l.emo + '）' : '') + '說「' + str(l.text) + '」').join('；'));
+      else if (lines.length) out.push(lines.some(l => l.c !== '旁白') ? '說話的人嘴巴自然開合，之後另外配音' : '');
+      if (lines.length && lines.every(l => l.c === '旁白')) out.push('旁白是畫外音，畫面裡的人不說話、嘴唇閉合');
+      else if (lines.length && silent) out.push('沒說話的人嘴唇閉合');
+      out.push('畫面不要字幕或文字');
+      return out.filter(Boolean);
+    }
+    if (lines.length && withText) {
+      out.push(lines.map(l => (l.c === '旁白' ? 'a voice-over narrator (off screen)' : whoEn(project, l.c)) + ' says in Taiwanese Mandarin' + (l.emo ? ' (' + l.emo + ')' : '') + ': "' + str(l.text) + '"').join('; then '));
+    } else if (lines.some(l => l.c !== '旁白')) {
+      out.push(lines.filter(l => l.c !== '旁白').map(l => whoEn(project, l.c)).filter((x, i, a) => a.indexOf(x) === i).join(' and ') + ' speaks with natural lip movement, audio dubbed later');
+    }
+    if (lines.length && lines.every(l => l.c === '旁白')) out.push('no one on screen speaks, lips stay closed');
+    else if (lines.length && silent) out.push('characters who are not speaking keep their lips closed');
+    out.push('no subtitles or on-screen text');
+    return out;
+  }
+
   function videoPrompt(project, shot) {
     const zh = project.style.videoLang === '中文';
     if (zh) {
@@ -543,15 +585,48 @@
         loc ? '場景：' + loc.name : '',
         [shot.size, shot.angle].filter(Boolean).join('，'),
         shot.move ? '鏡頭：' + shot.move : '',
-        '長度約 ' + (shot.sec || 5) + ' 秒',
-      ].filter(Boolean).join('。');
+      ].concat(videoLines(project, shot, true), ['長度約 ' + (shot.sec || 5) + ' 秒']).filter(Boolean).join('。');
     }
     return [
       shot.motionEn || shot.visualEn || shot.action,
       EN.move[shot.move],
       EN.size[shot.size],
-      'about ' + (shot.sec || 5) + ' seconds',
-    ].map(x => str(x)).filter(Boolean).join(', ');
+    ].concat(videoLines(project, shot, false), ['about ' + (shot.sec || 5) + ' seconds']).map(x => str(x)).filter(Boolean).join(', ');
+  }
+
+  /* ---------- 定裝照提示詞 ---------- */
+
+  // 先做定裝照、之後每鏡拿它當參考圖，是 AI 短劇維持同一張臉最有效的方法。
+  // 配方取自 short-drama-image-prompts：一張只放一個人、一套服裝；均勻正面光；素色背景；
+  // 不要視圖標籤和箭頭（模型會把字畫進圖裡）；只寫看得見的錨點，不寫「完美五官」這種會被重新詮釋的形容詞。
+  const SHEETS = {
+    face: { label: '臉部定裝照', fmt: 'square 1:1 composition' },
+    costume: { label: '全身定裝照', fmt: '' },
+    turnaround: { label: '三視圖', fmt: 'wide 16:9 sheet layout' },
+    expression: { label: '表情九宮格', fmt: 'square 1:1 sheet layout' },
+  };
+
+  // 定裝照不是劇照：拿掉 film still、鏡頭焦段這類詞，只保留媒材（寫實、動畫、厚塗…）
+  function sheetMedium(prefix) {
+    return String(prefix || '').split(',').map(x => x.trim()).filter(x => x && !/\bstill\b|\blens\b|anamorphic|film grain|shallow depth/i.test(x)).join(', ');
+  }
+
+  function sheetPrompt(project, charId, kind, outfitId) {
+    const ch = find(project.characters, charId);
+    const sh = SHEETS[kind];
+    if (!ch || !sh) return '';
+    const st = project.style;
+    const fit = find(ch.outfits, outfitId) || (ch.outfits || [])[0];
+    const who = str(ch.appearance) || 'one character';
+    const wear = fit && fit.prompt ? 'wearing ' + fit.prompt : '';
+    const plain = 'even soft frontal studio light, plain light grey background';
+    const body = {
+      face: ['head-and-shoulders face reference of one person: ' + who, wear, 'facing the camera straight on, neutral expression, full hairline and jawline visible', plain, 'no text'],
+      costume: ['full-body costume reference of one person: ' + who, wear ? wear + ', from head to toe including shoes' : '', 'standing straight facing the camera, arms relaxed at the sides, neutral expression', plain, 'no props, no text'],
+      turnaround: ['character turnaround sheet of one person: ' + who, wear, 'three full-body views side by side at equal height: front view, side profile, back view', 'neutral standing pose, neutral expression', plain, 'same face, hairstyle, proportions and outfit in every view', 'no view labels, no arrows, no annotations, no text'],
+      expression: ['expression sheet of one person: ' + who, wear, 'a 3x3 grid of head-and-shoulders portraits with identical framing: neutral, slight smile, laughing, angry, shocked, sad with tears, scared, cold glare, smirking', plain, 'only the expression changes, face, hairstyle and outfit stay identical', 'no labels, no text'],
+    }[kind];
+    return [sheetMedium(st.prefix)].concat(body, [st.suffix, sh.fmt || EN.format[project.meta.format]]).map(x => str(x)).filter(Boolean).join(', ');
   }
 
   function speakerName(project, c) {
@@ -624,6 +699,29 @@
     out.push('《' + (project.meta.title || '未命名') + '》分鏡提示詞包');
     out.push('負面提示詞（每鏡共用）：' + (project.style.negative || '（未設定）'));
     out.push('');
+    // 先做定裝照：只列這次匯出範圍用到的角色與服裝，生成後存起來當每一鏡的參考圖
+    const used = new Map();
+    for (const e of eps) for (const s of epShots(project, e.id)) for (const r of s.cast || []) {
+      const ch = find(project.characters, r.c);
+      if (!ch) continue;
+      const fit = find(ch.outfits, r.outfit) || (ch.outfits || [])[0];
+      if (!used.has(ch.id)) used.set(ch.id, new Set());
+      if (fit) used.get(ch.id).add(fit.id);
+    }
+    if (used.size) {
+      out.push('══ 定裝照（先做，之後每一鏡都上傳當參考圖）');
+      for (const [cid, fits] of used) {
+        const ch = find(project.characters, cid);
+        out.push('');
+        out.push('▌' + (ch.name || cid) + (ch.voice ? '｜聲線：' + ch.voice : ''));
+        out.push('［臉部］' + sheetPrompt(project, cid, 'face'));
+        for (const oid of fits) {
+          const fit = find(ch.outfits, oid);
+          out.push('［三視圖・' + (fit.name || oid) + '］' + sheetPrompt(project, cid, 'turnaround', oid));
+        }
+      }
+      out.push('');
+    }
     for (const e of eps) {
       out.push('══ 第' + e.no + '集 ' + (e.title || ''));
       let t = 0;
@@ -821,7 +919,8 @@
         '- 企劃欄位空白就依「類型」與「一句想法」自己原創；類型是「隨機」就挑一個在短影音平台受歡迎的類型。題材要原創，不要改編現有作品。',
         '- 共 ' + (m.episodes || 10) + ' 集、每集約 ' + (m.epSeconds || 90) + ' 秒，' + (m.format || '9:16 直式') + '。',
         '- 角色 3～5 位、場景 3～6 個、關鍵道具 1～3 個。越少越容易讓 AI 生成保持一致，成本也越低。',
-        '- appearance（英文）要具體且固定：年齡、臉型、髮型髮色、體型，再加一個一眼認得的特徵（疤、飾品、痣）。不同角色要一眼分得出來。',
+        '- appearance（英文）要具體且固定：年齡、臉型、髮型髮色、體型，再加一個一眼認得的特徵（疤、痣、胎記、眼鏡）。不同角色要一眼分得出來。',
+        '- appearance 只寫看得見、換衣服也不會變的特徵；不要寫 beautiful、perfect features、handsome 這類抽象形容，模型每次都會重新詮釋，臉就跑掉了。服裝、妝、傷勢寫在 outfits，不寫進 appearance。',
         '- outfits 每人 1～2 套，英文寫顏色、材質、款式。',
         '- 場景 prompt（英文）只寫空間、陳設、材質、氛圍，不要放人物。',
         '- style 依題材設定畫風、色調、光線、提示詞開頭與結尾、負面提示詞。',
@@ -866,11 +965,14 @@
         '【任務】把第 ' + ep.no + ' 集' + (ep.title ? '《' + ep.title + '》' : '') + '拆成分鏡，總長約 ' + target + ' 秒。依據：' + (ep.source ? '專案裡的小說版（episode.source）' : '分集大綱') + '。',
         '- 每鏡 2～' + maxSec + ' 秒，只拍一個動作；所有鏡頭秒數加總接近 ' + target + '。',
         '- 第 1 鏡就是 hook，0～3 秒內出現衝突或異常；最後一鏡停在 cliffhanger。',
+        ...((m.format || '9:16 直式') === '9:16 直式' ? ['- 9:16 直式畫面窄，以中景、近景、特寫為主；交代空間用前景、後景的縱深（門框、桌沿、背影），少用遠景。'] : []),
         '- 對白每秒最多 4 個字：5 秒的鏡頭台詞不超過 20 字，講不完就拆鏡。',
         '- 同一鏡最多 3 個角色入鏡，最好 1～2 個。',
         '- cast 與 lines 的 c 只能用角色 id，旁白寫 "旁白"；loc 只能用場景 id；outfit 用該角色的服裝 id。',
-        '- visualEn：英文，具體寫畫面上看得到的東西（動作、表情、構圖、前後景），不要寫人名，用外觀或身分指稱，例如 the young woman in the store vest。',
-        '- motionEn：英文一句，寫這幾秒內的動作與鏡頭運動。',
+        '- visualEn：英文，這一鏡的第一個畫面（定格，攝影師一次拍得下來）。寫每個人在畫面左／右、前景／後景的位置、身體朝向、看著誰、手上拿什麼、一個表情；不要寫人名，用外觀或身分指稱，例如 the young woman in the store vest。不要寫 then、表情從 A 變 B、鏡頭移動。',
+        '- motionEn：英文一句，依序寫起始狀態 → 一個主要動作（停在碰到某物或某個位置，不寫公分）→ 結束狀態。一鏡只有一個主要變化，5 秒最多兩個動作。',
+        '- 避開 AI 影片容易崩的動作：兩人搶東西或精準接住、三步以上的雙手操作、只靠微表情撐的戲、「沒有接話」這種否定動作、心理狀態（像是、忽然明白）。改成拆到相鄰兩鏡、改由物件或聲音交代。',
+        '- 相鄰兩鏡至少改變景別、角度或人物關係其中一項；兩人對話用正反打，維持在軸線同一側。',
         '- id 用 ' + ep.id + '-01、' + ep.id + '-02…；scene 從 1 起算，同一場景連續的鏡頭用同一個 scene；order 從 1 起算。',
         '- 最外層要有 "_mode": "replace"，代表取代這集原本的分鏡。',
         '',
@@ -896,6 +998,7 @@
         '3. 節奏：hook 夠不夠快、哪幾鏡拖戲、結尾懸念強不強',
         '4. 對白：哪幾句有 AI 味或太長，直接給改寫',
         '5. AI 生成風險：哪幾鏡人太多、動作太複雜、手部或文字特寫容易崩，建議怎麼拆或改',
+        '6. 首幀與動態：visualEn 是不是只有一個瞬間、站位與視線清不清楚；motionEn 是不是一鏡只有一個主要變化、有沒有寫結束狀態',
       ].join('\n');
     } else {
       throw new Error('不認得的工作：' + task);
@@ -938,7 +1041,7 @@
   return {
     SCHEMA, SPEC, OPT, EN, TASKS, COLLECTIONS, CHARS_PER_SEC,
     newProject, newItem, normalize, merge, extractJSON, lint,
-    imagePrompt, videoPrompt, aiPrompt, exportSRT, exportCSV, exportPromptPack, exportMarkdown,
+    imagePrompt, videoPrompt, sheetPrompt, SHEETS, aiPrompt, exportSRT, exportCSV, exportPromptPack, exportMarkdown,
     epShots, epSeconds, speakerName, demoProject, clone, find, clock, EXAMPLES,
   };
 });

@@ -121,6 +121,15 @@ textarea.mono, .prompt { font-family: var(--mono); font-size: 13px; }
 }
 .row .field { margin: 0; }
 .row-del { justify-self: end; }
+/* 下拉＋按鈕同一列：按鈕維持 44pt 可點，選單吃掉剩下寬度 */
+.inline { display: flex; gap: 8px; align-items: stretch; }
+.inline select { flex: 1 1 auto; min-width: 0; }
+.inline .btn { flex: 0 0 auto; }
+.field.preset { margin-top: 14px; }
+/* 外觀選單兩欄排，十一個下拉在 iPhone 上不用滑兩個螢幕 */
+.look-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
+.look-grid .field { margin-bottom: 10px; }
+details ul.small { margin: 4px 0 10px; padding-left: 1.2em; }
 
 /* 按鈕 */
 .btn {

@@ -2,8 +2,9 @@
    所有使用者／AI 給的文字一律用 textContent 放進畫面，不用 innerHTML，避免貼上的內容被當成程式執行。 */
 'use strict';
 (function () {
-  const APP_VER = '1.0.0';
+  const APP_VER = '1.1.0';
   const C = window.DramaCore;
+  const P = window.DramaPresets;
   const KEY = {
     index: 'aidrama.index',
     cur: 'aidrama.cur',
@@ -12,7 +13,7 @@
     undo: id => 'aidrama.undo.' + id,
   };
   const TABS = ['plan', 'setup', 'episodes', 'shots', 'export'];
-  const ui = { tab: 'plan', ep: '', setup: 'characters', aiTask: 'bible', aiEp: '', exportEp: '' };
+  const ui = { tab: 'plan', ep: '', setup: 'characters', aiTask: 'bible', aiEp: '', exportEp: '', sheetKind: 'turnaround', sheetOutfit: '', styleOpen: false };
   let project = null;
   let saveTimer = null;
   let uid = 0;
@@ -214,9 +215,28 @@
       if (onChange) onChange(f.k);
     } });
     wrap.append(h('div', { class: 'row-head', text: f.l }), box, add);
+    if (f.k === 'outfits') wrap.append(outfitPresetRow(obj[f.k], () => { scheduleSave(); draw(); if (onChange) onChange(f.k); }));
     if (f.tip) wrap.append(h('p', { class: 'tip', text: f.tip }));
     draw();
     return wrap;
+  }
+
+  // 服裝範本：照類別分組的下拉選單，比一排排按鈕好在手機上捲
+  function outfitPresetRow(rows, done) {
+    const id = 'f' + (++uid);
+    const sel = h('select', { id }, h('option', { value: '', text: '（選一套）' }),
+      P.OUTFITS.map(g => h('optgroup', { label: g.g }, g.items.map(o => h('option', { value: o.name, text: o.name })))));
+    const add = h('button', { type: 'button', class: 'btn', text: '加入', onclick: () => {
+      const o = P.outfit(sel.value);
+      if (!o) { toast('先選一套服裝範本', true); return; }
+      let n = 1;
+      while (rows.some(r => r.id === 'o' + n)) n++;
+      rows.push({ id: 'o' + n, name: o.name, prompt: o.prompt });
+      sel.value = '';
+      done();
+      toast('已加入服裝：' + o.name);
+    } });
+    return h('div', { class: 'field preset' }, h('label', { for: id, text: '從服裝範本加入' }), h('div', { class: 'inline' }, sel, add));
   }
 
   function rowEditor(f, obj, row, i, redraw) {
@@ -315,8 +335,10 @@
     const form = h('div');
     const preview = h('div');
     const drawPreview = () => {
-      if (coll !== 'shots') return;
       preview.textContent = '';
+      if (coll === 'characters') { preview.append(sheetBlock(item)); return; }
+      if (coll === 'episodes') { const b = inspoBlock(); if (b) preview.append(b); return; }
+      if (coll !== 'shots') return;
       const img = C.imagePrompt(project, item), vid = C.videoPrompt(project, item);
       preview.append(
         h('h3', { text: '組好的提示詞' }),
@@ -327,7 +349,7 @@
           h('button', { type: 'button', class: 'btn', text: '複製影片提示詞', onclick: () => copy(C.videoPrompt(project, item), '已複製影片提示詞') })));
     };
     const onChange = () => {
-      if (coll === 'shots') drawPreview();
+      if (coll === 'shots' || coll === 'characters') drawPreview();
       if (coll === 'characters' || coll === 'episodes') $('#sheetTitle').textContent = itemTitle(coll, item);
     };
     // 常改的欄位放上面，其餘收進 details，手機上不用滑很久才找到外觀與服裝
@@ -336,6 +358,7 @@
     for (const f of spec.fields) {
       const el = field(f, item, onChange);
       if (!primary || primary.includes(f.k)) form.append(el); else more.append(el);
+      if (coll === 'characters' && f.k === 'appearance') form.append(lookBuilder(item, el, onChange));
     }
     if (more) form.append(more);
     drawPreview();
@@ -355,6 +378,166 @@
       saveNow();
       render();
     });
+  }
+
+  // 外觀錨點產生器：選項改寫自咒語盒的角色工坊；組出來的英文可以再手改
+  function lookBuilder(item, fieldEl, onChange) {
+    const sel = {};
+    const grid = h('div', { class: 'look-grid' });
+    const out = h('div', { class: 'prompt' });
+    const upd = () => { out.textContent = P.composeAppearance(sel) || '（選幾項就會出現）'; };
+    const guess = { gender: item.gender, age: item.age ? String(item.age).replace(/\D.*$/, '') + ' 歲' : '' };
+    for (const ax of P.LOOK) {
+      const id = 'f' + (++uid);
+      const s = h('select', { id }, h('option', { value: '', text: '（不指定）' }), ax.opts.map(o => h('option', { value: o[0], text: o[0] })));
+      if (guess[ax.k] && ax.opts.some(o => o[0] === guess[ax.k])) { s.value = guess[ax.k]; sel[ax.k] = s.value; }
+      s.addEventListener('change', () => { sel[ax.k] = s.value; upd(); });
+      grid.append(h('div', { class: 'field' }, h('label', { for: id, text: ax.l }), s));
+    }
+    upd();
+    return h('details', { class: 'look' }, h('summary', { text: '用選單產生外觀錨點' }), grid,
+      h('p', { class: 'tip', text: '「辨識特徵」最重要：換了衣服還認得出是同一人，靠的就是它。' }), out,
+      h('div', { class: 'btn-row' }, h('button', { type: 'button', class: 'btn primary', text: '填入外觀錨點', onclick: () => {
+        const text = P.composeAppearance(sel);
+        if (!text) { toast('先選幾項', true); return; }
+        if (item.appearance && item.appearance !== text && !confirm('會取代目前的外觀錨點，確定嗎？')) return;
+        item.appearance = text;
+        const ta = fieldEl.querySelector('textarea');
+        if (ta) ta.value = text;
+        scheduleSave();
+        onChange('appearance');
+        toast('已填入外觀錨點');
+      } })));
+  }
+
+  function sheetBlock(ch) {
+    const wrap = h('div', null, h('h3', { text: '定裝照提示詞' }),
+      h('p', { class: 'tip', text: '先用這段生出定裝照存起來；之後每一鏡都上傳它當參考圖（到「企劃 → 風格」把「生圖參考圖」改成定裝照），臉和衣服就不容易跑掉。' }));
+    if (!ch.appearance) { wrap.append(h('p', { class: 'small muted', text: '先填外觀錨點（或用上面的選單產生），才能組定裝照提示詞。' })); return wrap; }
+    const kid = 'f' + (++uid), oid = 'f' + (++uid);
+    const kind = h('select', { id: kid }, Object.entries(C.SHEETS).map(([k, x]) => h('option', { value: k, text: x.label })));
+    kind.value = ui.sheetKind;
+    const fits = ch.outfits || [];
+    const fit = h('select', { id: oid }, fits.length ? fits.map(o => h('option', { value: o.id, text: o.name || o.id })) : h('option', { value: '', text: '（還沒有服裝）' }));
+    if (fits.some(o => o.id === ui.sheetOutfit)) fit.value = ui.sheetOutfit;
+    const out = h('div', { class: 'prompt' });
+    const upd = () => { ui.sheetKind = kind.value; ui.sheetOutfit = fit.value; out.textContent = C.sheetPrompt(project, ch.id, kind.value, fit.value); };
+    kind.addEventListener('change', upd);
+    fit.addEventListener('change', upd);
+    upd();
+    wrap.append(h('div', { class: 'look-grid' },
+      h('div', { class: 'field' }, h('label', { for: kid, text: '哪一種' }), kind),
+      h('div', { class: 'field' }, h('label', { for: oid, text: '哪一套服裝' }), fit)), out,
+    h('div', { class: 'btn-row' }, h('button', { type: 'button', class: 'btn', text: '複製定裝照提示詞', onclick: () => copy(C.sheetPrompt(project, ch.id, kind.value, fit.value), '已複製' + C.SHEETS[kind.value].label + '提示詞') })));
+    return wrap;
+  }
+
+  function inspoBlock() {
+    const s = P.story(project.meta.genre);
+    if (!s) return null;
+    return h('details', null, h('summary', { text: '鉤子與懸念靈感（' + s.genre + '）' }),
+      h('div', { class: 'row-head', text: '前 3 秒鉤子' }), h('ul', { class: 'small' }, s.hooks.map(x => h('li', { text: x }))),
+      h('div', { class: 'row-head', text: '結尾懸念' }), h('ul', { class: 'small' }, s.cliffs.map(x => h('li', { text: x }))));
+  }
+
+  /* ---------- 範本 ---------- */
+
+  function uniqueName(coll, name) {
+    let n = name, i = 2;
+    while (project[coll].some(x => x.name === n)) n = name + ' ' + (i++);
+    return n;
+  }
+
+  function openPresetPicker(coll) {
+    const groups = { characters: P.CHARACTERS, locations: P.LOCATIONS, props: P.PROPS }[coll];
+    const label = C.SPEC[coll].label;
+    const sel = h('select', { id: 'presetGroup' }, groups.map((g, i) => h('option', { value: String(i), text: g.g + '（' + g.items.length + '）' })));
+    const list = h('div', { class: 'list' });
+    const draw = () => {
+      list.textContent = '';
+      for (const it of groups[Number(sel.value)].items) {
+        const title = coll === 'characters' ? it.t + '｜' + it.name : it.name;
+        const sub = coll === 'characters' ? [it.role, it.age, it.job].join('，') : it.desc;
+        list.append(h('button', { type: 'button', class: 'item', onclick: () => {
+          const seed = coll === 'characters' ? P.characterSeed(it.t) : coll === 'locations' ? P.locationSeed(it.name) : P.propSeed(it.name);
+          seed.name = uniqueName(coll, seed.name);
+          const added = C.newItem(project, coll, seed);
+          saveNow();
+          toast('已加入' + label + '：' + added.name);
+          openEditor(coll, added);
+        } }, h('span', { class: 'item-title', text: title }), h('span', { class: 'item-sub', text: sub })));
+      }
+    };
+    sel.addEventListener('change', draw);
+    draw();
+    openSheet(label + '範本', h('div', null,
+      h('div', { class: 'field' }, h('label', { for: 'presetGroup', text: '類別' }), sel), list,
+      h('p', { class: 'tip', text: '點一下就加入並打開編輯，名字和設定都可以改。外觀錨點裡那個辨識特徵（痣、疤、眼鏡）盡量留著。' })), () => render());
+  }
+
+  function storyBlock() {
+    const sel = h('select', { id: 'storySel' }, P.STORIES.map(s => h('option', { value: s.genre, text: s.genre + '｜' + s.n })));
+    sel.value = P.story(project.meta.genre) ? project.meta.genre : P.STORIES[0].genre;
+    const info = h('div');
+    const draw = () => {
+      const s = P.story(sel.value);
+      info.textContent = '';
+      info.append(h('p', { class: 'small', text: s.meta.logline }),
+        h('p', { class: 'small muted', text: '賣點：' + s.meta.hook + '｜畫風：' + s.style }),
+        h('p', { class: 'small muted', text: '角色：' + s.cast.join('、') + '｜場景：' + s.locations.join('、') }));
+    };
+    sel.addEventListener('change', draw);
+    draw();
+    const empty = !project.characters.length && !project.episodes.length;
+    return h('details', { open: empty }, h('summary', { text: '從故事範本開始（' + P.STORIES.length + ' 種類型）' }),
+      h('div', { class: 'field' }, h('label', { for: 'storySel', text: '故事範本' }), sel), info,
+      h('div', { class: 'btn-row' },
+        h('button', { type: 'button', class: 'btn primary', text: '整套套用', onclick: () => applyStory(P.story(sel.value), true) }),
+        h('button', { type: 'button', class: 'btn', text: '只套企劃', onclick: () => applyStory(P.story(sel.value), false) })),
+      h('p', { class: 'tip', text: '整套＝企劃＋畫風＋建議角色與場景（同名的不會重複加）。只套企劃＝只填類型、一句話故事、賣點、調性、觀眾、主題。' }));
+  }
+
+  function applyStory(s, full) {
+    const keys = ['logline', 'hook', 'tone', 'audience', 'theme'];
+    const filled = keys.filter(k => project.meta[k] && project.meta[k] !== s.meta[k]);
+    if (filled.length && !confirm('企劃裡已經有內容，會被範本取代：' + filled.map(k => C.SPEC.meta.fields.find(f => f.k === k).l).join('、') + '。確定嗎？')) return;
+    if (!project.meta.title || project.meta.title === '新的短劇') project.meta.title = s.n;
+    project.meta.genre = s.genre;
+    Object.assign(project.meta, s.meta);
+    const done = ['企劃'];
+    if (full) {
+      const st = P.style(s.style);
+      if (st) { Object.assign(project.style, st.set); done.push('畫風「' + st.n + '」'); }
+      let nc = 0, nl = 0;
+      for (const t of s.cast) {
+        const seed = P.characterSeed(t);
+        if (seed && !project.characters.some(c => c.name === seed.name)) { C.newItem(project, 'characters', seed); nc++; }
+      }
+      for (const n of s.locations) {
+        const seed = P.locationSeed(n);
+        if (seed && !project.locations.some(l => l.name === seed.name)) { C.newItem(project, 'locations', seed); nl++; }
+      }
+      done.push('角色 ' + nc + ' 位', '場景 ' + nl + ' 個');
+    }
+    saveNow();
+    render();
+    toast('已套用：' + done.join('、'));
+  }
+
+  function stylePresetField() {
+    const sel = h('select', { id: 'stylePreset' }, h('option', { value: '', text: '（選一種）' }), P.STYLES.map(s => h('option', { value: s.n, text: s.n + '｜' + s.d })));
+    return h('div', { class: 'field' }, h('label', { for: 'stylePreset', text: '套用畫風範本' }),
+      h('div', { class: 'inline' }, sel, h('button', { type: 'button', class: 'btn', text: '套用', onclick: () => {
+        const st = P.style(sel.value);
+        if (!st) { toast('先選一種畫風', true); return; }
+        if (!confirm('會改掉畫風、色調、光線、提示詞開頭與結尾、負面提示詞，確定嗎？')) return;
+        Object.assign(project.style, st.set);
+        ui.styleOpen = true;
+        saveNow();
+        render();
+        toast('已套用畫風「' + st.n + '」');
+      } })),
+      h('p', { class: 'tip', text: '寫實和動畫的負面提示詞不一樣，會一起換。' }));
   }
 
   const EDITOR_PRIMARY = {
@@ -395,14 +578,15 @@
       card.append(h('div', { class: 'hint' },
         h('strong', { text: '還沒有故事也沒關係' }),
         h('ol', null,
-          h('li', { text: '下面選個類型，想法可以空著。' }),
+          h('li', { text: '下面選個故事範本「整套套用」，或自己選類型、想法可以空著。' }),
           h('li', { text: '按「AI 助手」→ 生成設定集 → 複製指令，貼到 Claude 或 ChatGPT。' }),
           h('li', { text: '把 AI 的回覆整段貼回來，角色、場景、風格就都填好了。' })),
         h('button', { type: 'button', class: 'btn primary', text: '打開 AI 助手', onclick: () => openAI('bible') })));
     }
-    card.append(h('h2', { id: 'h-plan', text: '企劃' }));
+    card.append(h('h2', { id: 'h-plan', text: '企劃' }), storyBlock());
     for (const f of C.SPEC.meta.fields) card.append(field(f, project.meta, k => { if (k === 'title') $('#projTitle').textContent = project.meta.title || '未命名專案'; }));
-    const style = h('details', null, h('summary', { text: '風格與提示詞設定' }));
+    const style = h('details', { open: ui.styleOpen }, h('summary', { text: '風格與提示詞設定' }), stylePresetField());
+    style.addEventListener('toggle', () => { ui.styleOpen = style.open; });
     for (const f of C.SPEC.style.fields) style.append(field(f, project.style));
     card.append(style, lintDetails(C.lint(project), '全劇健檢'));
     return card;
@@ -427,9 +611,10 @@
         h('span', { class: 'item-title' }, it.name || '（未命名）', missing ? h('span', { class: 'badge', text: '缺英文描述' }) : null),
         sub ? h('span', { class: 'item-sub', text: sub }) : null));
     }
-    if (!project[coll].length) list.append(h('p', { class: 'empty', text: '還沒有' + C.SPEC[coll].label + '。可以自己新增，或用 AI 助手一次生成整套設定。' }));
+    if (!project[coll].length) list.append(h('p', { class: 'empty', text: '還沒有' + C.SPEC[coll].label + '。可以自己新增、從範本加入，或用 AI 助手一次生成整套設定。' }));
     card.append(list, h('div', { class: 'btn-row' },
       h('button', { type: 'button', class: 'btn primary', text: '新增' + C.SPEC[coll].label, onclick: () => openEditor(coll, C.newItem(project, coll), true) }),
+      h('button', { type: 'button', class: 'btn', text: '從範本加入', onclick: () => openPresetPicker(coll) }),
       h('button', { type: 'button', class: 'btn', text: 'AI 生成設定集', onclick: () => openAI('bible') })));
     if (coll === 'characters') card.append(h('details', null, h('summary', { text: '為什麼外觀要寫英文、而且要固定？' }),
       h('p', { class: 'small', text: 'AI 影片最難的是同一個角色每一鏡長得一樣。每張圖都貼同一段外觀描述（年齡、髮型、體型、一個辨識特徵），再搭配同一張定裝照當參考圖，臉崩的機率會低很多。多數生圖工具對英文描述比較準。' })));
@@ -556,6 +741,7 @@
       }],
       ['設定集', 'Markdown，貼給任何 AI 當背景資料。', () => deliver(base + '_設定集.md', C.exportMarkdown(project), 'text/markdown;charset=utf-8')],
       ['複製設定集', '直接複製文字，不存檔。', () => copy(C.exportMarkdown(project), '已複製設定集')],
+      ['範本庫', '角色、服裝、場景、道具、畫風、故事範本全集（Markdown），不用 App 時也能複製。', () => deliver('AI短劇範本庫.md', P.libraryMarkdown(), 'text/markdown;charset=utf-8')],
       ['空白模板', '不用 App 時，自己填的設定集模板。', () => deliver('AI短劇設定集模板.md', C.exportMarkdown(C.newProject(), { tips: true, heading: 'AI 短劇設定集模板' }), 'text/markdown;charset=utf-8')],
       ['備份專案', '整個專案存成 JSON，換手機或清快取前一定要做。', () => { saveNow(); deliver(base + '_備份_' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(project, null, 1), 'application/json'); }],
     ];
