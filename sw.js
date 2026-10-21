@@ -1,5 +1,5 @@
 // 離線快取：連得上網路就拿最新版（避免手機卡在舊版），斷線才用快取。
-const VER = '1.3.0';
+const VER = '1.3.1';
 const CACHE = 'aidrama-' + VER;
 const FILES = ['./', 'index.html', 'styles.css', 'core.js', 'presets.js', 'tools.js', 'photos.js', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 

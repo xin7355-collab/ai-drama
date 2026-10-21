@@ -260,6 +260,36 @@ test('角色卡照片：存入定裝照後縮圖、流程進度、參考圖設�
   await expect(page.getByRole('dialog').locator('.list').first().locator('.item')).toHaveCount(2);
 });
 
+test('照片存成 ArrayBuffer（WebKit 無痕存 Blob 會失敗）；1.3.0 存的 Blob 舊資料照樣讀得出來', async ({ page }) => {
+  await page.goto('/');
+  const r = await page.evaluate(async () => {
+    const P = window.DramaPhotos;
+    await P.put('t', 'chars', 'c1', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }));
+    const db = await new Promise((ok, no) => { const q = indexedDB.open('aidrama', 1); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); });
+    const raw = await new Promise(ok => { const q = db.transaction('photos').objectStore('photos').get('t|chars|c1'); q.onsuccess = () => ok(q.result); });
+    const back = await P.get('t', 'chars', 'c1');
+    // 舊資料只可能出現在存得進 Blob 的瀏覽器（Chromium）；存不進去的瀏覽器本來就不會有舊資料
+    const legacy = await new Promise(ok => {
+      try {
+        const t = db.transaction('photos', 'readwrite');
+        t.objectStore('photos').put(new Blob([new Uint8Array([9, 9])], { type: 'image/jpeg' }), 't|chars|old');
+        t.oncomplete = () => ok(true); t.onerror = () => ok(false); t.onabort = () => ok(false);
+      } catch (e) { ok(false); }
+    });
+    const old = legacy ? await P.get('t', 'chars', 'old') : null;
+    const all = await P.list('t');
+    return {
+      isBlob: raw instanceof Blob, isBuf: raw && raw.buf instanceof ArrayBuffer, type: back.type, size: back.size,
+      legacy, oldSize: old && old.size, oldType: old && old.type, listSizes: all.map(x => x.blob.size).sort(),
+    };
+  });
+  expect(r).toMatchObject({ isBlob: false, isBuf: true, type: 'image/png', size: 3 });
+  if (r.legacy) {
+    expect(r).toMatchObject({ oldSize: 2, oldType: 'image/jpeg' });
+    expect(r.listSizes).toEqual([2, 3]);
+  } else expect(r.listSizes).toEqual([3]);
+});
+
 test('瀏覽器不能存照片（例如無痕模式）時，角色卡講清楚原因，其他功能照常', async ({ page }) => {
   await page.addInitScript(() => { Object.defineProperty(window, 'indexedDB', { value: undefined, configurable: true }); });
   await page.goto('/');

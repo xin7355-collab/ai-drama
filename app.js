@@ -4,7 +4,7 @@
    所以第一頁永遠指出下一步，其他頁只放那一步要用的東西；整部的匯出與備份放在「專案」選單。 */
 'use strict';
 (function () {
-  const APP_VER = '1.3.0';
+  const APP_VER = '1.3.1';
   const C = window.DramaCore;
   const P = window.DramaPresets;
   const T = window.DramaTools;

@@ -31,8 +31,9 @@
       let out;
       const t = db.transaction(STORE, mode);
       t.oncomplete = () => resolve(out);
-      t.onerror = () => reject(t.error || new Error('照片存取失敗'));
-      t.onabort = () => reject(t.error || new Error('照片存取被中斷：手機空間可能不夠'));
+      // 失敗原因在出錯的那個請求上（e.target），交易本身的 error 這時常常還是 null
+      t.onerror = e => reject(why(e.target && e.target.error));
+      t.onabort = () => reject(why(t.error, '照片存取被中斷：手機空間可能不夠，清出一些空間再試'));
       try { fn(t.objectStore(STORE), v => { out = v; }); } catch (e) {
         try { t.abort(); } catch (x) { /* 已經結束的交易不能再中止 */ }
         reject(e);
@@ -40,12 +41,27 @@
     }));
   }
 
+  // 瀏覽器原本的英文錯誤看不懂，換成使用者能照著做的說明
+  function why(err, fallback) {
+    if (err && err.name === 'QuotaExceededError') return new Error('手機空間不夠，照片存不進去：清出一些空間或刪掉不用的照片再試');
+    return new Error(fallback || '照片存取失敗：重新整理頁面再試；還是不行，改用一般模式（不是無痕）或從主畫面打開');
+  }
+
   const key = (pid, coll, id) => pid + '|' + coll + '|' + id;
   const range = pid => IDBKeyRange.bound(pid + '|', pid + '|￿');
 
-  function put(pid, coll, id, blob) { return tx('readwrite', st => { st.put(blob, key(pid, coll, id)); }); }
+  // 存 ArrayBuffer 不存 Blob：WebKit 在無痕模式存 Blob 會直接失敗，舊版 iOS 也有存進去的 Blob 重開後讀不到的問題。
+  // 照片已經縮到幾百 KB，多轉一次記憶體負擔很小
+  const toBuf = b => (b.arrayBuffer ? b.arrayBuffer() : new Response(b).arrayBuffer());
+  // 1.3.0 在 Chromium 存的是 Blob，照樣讀得出來
+  const toBlob = v => (!v ? null : v instanceof Blob ? v : new Blob([v.buf], { type: v.type || 'image/jpeg' }));
+
+  function put(pid, coll, id, blob) {
+    // 先轉好再開交易：交易進行中去等別的非同步工作，瀏覽器會把交易自動結束
+    return toBuf(blob).then(buf => tx('readwrite', st => { st.put({ type: blob.type || 'image/jpeg', buf }, key(pid, coll, id)); }));
+  }
   function get(pid, coll, id) {
-    return tx('readonly', (st, set) => { const r = st.get(key(pid, coll, id)); r.onsuccess = () => set(r.result || null); });
+    return tx('readonly', (st, set) => { const r = st.get(key(pid, coll, id)); r.onsuccess = () => set(toBlob(r.result)); });
   }
   function del(pid, coll, id) { return tx('readwrite', st => { st.delete(key(pid, coll, id)); }); }
   function delProject(pid) { return tx('readwrite', st => { st.delete(range(pid)); }); }
@@ -57,7 +73,7 @@
         const c = r.result;
         if (!c) { set(out); return; }
         const parts = String(c.key).split('|');
-        out.push({ coll: parts[1], id: parts.slice(2).join('|'), blob: c.value });
+        out.push({ coll: parts[1], id: parts.slice(2).join('|'), blob: toBlob(c.value) });
         c.continue();
       };
     });
